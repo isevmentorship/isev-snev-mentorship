@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Matchmaker Preview · ISEV–SNEV Mentorship Program</title>
+  <meta name="description" content="A clickable demo of the ISEV–SNEV Mentorship Program matchmaker flow." />
+  <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='30' fill='%230f2a44'/><text x='50%25' y='55%25' text-anchor='middle' font-family='Georgia' font-size='22' fill='white' font-weight='700'>IS</text></svg>" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+  <div class="proto-banner">
+    <div class="container">
+      <strong>Prototype preview.</strong>
+      This is a front-end-only walkthrough using sample data. Nothing is saved or sent.
+    </div>
+  </div>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <span class="brand-mark">IS</span>
+        <span>ISEV &times; SNEV <span style="color:var(--muted);font-weight:500">Mentorship</span></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="index.html">Back to site</a>
+        <a href="#" id="restartBtn" class="btn btn-ghost">Restart demo</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section style="padding:2.5rem 0 3rem;">
+      <div class="container" style="max-width:960px;">
+
+        <!-- Stepper -->
+        <div class="stepper" id="stepper" aria-label="Progress">
+          <div class="step" data-step="1"><span class="dot">1</span> Role</div>
+          <span class="sep"></span>
+          <div class="step" data-step="2"><span class="dot">2</span> Application reviewed</div>
+          <span class="sep"></span>
+          <div class="step" data-step="3"><span class="dot">3</span> Blinded matches</div>
+          <span class="sep"></span>
+          <div class="step" data-step="4"><span class="dot">4</span> Awaiting mutual pick</div>
+          <span class="sep"></span>
+          <div class="step" data-step="5"><span class="dot">5</span> Unblinded</div>
+        </div>
+
+        <!-- STEP 1: Role picker -->
+        <section id="screen-1" class="panel" hidden>
+          <h4>Step 1</h4>
+          <h2>Which side of the match are you?</h2>
+          <p style="color:var(--muted);max-width:580px;">
+            In the real program, this is inferred from your application. For the preview,
+            pick a role to see the view that participant would experience.
+          </p>
+          <div class="choice-row">
+            <a href="#" class="choice" data-role="mentee">
+              <h3>I'm applying as a mentee</h3>
+              <p>I'm looking for guidance on training, career moves, or a specific technique.</p>
+            </a>
+            <a href="#" class="choice" data-role="mentor">
+              <h3>I'm applying as a mentor</h3>
+              <p>I'm willing to share my experience with an early-career EV researcher.</p>
+            </a>
+          </div>
+        </section>
+
+        <!-- STEP 2: Application reviewed -->
+        <section id="screen-2" class="panel" hidden>
+          <h4>Step 2 · Application review</h4>
+          <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <h2 style="margin:0;">Your application has been accepted.</h2>
+            <span class="status-pill green">Accepted</span>
+          </div>
+          <p style="color:var(--muted);max-width:640px;margin-top:0.6rem;">
+            Welcome to the Spring 2026 matching cycle. A joint ISEV–SNEV committee
+            reviewed your profile and generated a shortlist of candidates based on
+            research focus, training goals, career stage, geography, and availability.
+          </p>
+
+          <div class="card" style="margin-top:1.5rem;">
+            <h4 style="margin-bottom:0.5rem;">Your profile summary</h4>
+            <dl class="match-card" style="display:grid;grid-template-columns:auto 1fr;gap:0.3rem 0.8rem;border:none;padding:0;box-shadow:none;">
+              <dt style="color:var(--muted);">Role</dt><dd id="sumRole">Mentee</dd>
+              <dt style="color:var(--muted);">Career stage</dt><dd>Postdoc, Year 2</dd>
+              <dt style="color:var(--muted);">Research focus</dt><dd>EV biomarkers in neurodegeneration</dd>
+              <dt style="color:var(--muted);">Training goals</dt><dd>Grant writing; transition to independence</dd>
+              <dt style="color:var(--muted);">Time zone</dt><dd>CET (UTC+1)</dd>
+              <dt style="color:var(--muted);">Availability</dt><dd>Weekday evenings, ~1 hr/month</dd>
+            </dl>
+          </div>
+
+          <div class="nav-proto">
+            <button class="btn btn-primary" data-goto="3">See my blinded matches</button>
+            <button class="btn btn-ghost" data-goto="1">Change role</button>
+          </div>
+        </section>
+
+        <!-- STEP 3: Blinded matches -->
+        <section id="screen-3" class="panel" hidden>
+          <h4>Step 3 · Blinded matches</h4>
+          <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <h2 style="margin:0;" id="matchesTitle">Here are your candidate mentors.</h2>
+            <span class="status-pill">3 candidates</span>
+          </div>
+          <p style="color:var(--muted);max-width:640px;margin-top:0.6rem;">
+            Names, affiliations, and photos are hidden. You can select up to three.
+            Each candidate will be asked whether they'd like to proceed with you
+            before any identities are revealed.
+          </p>
+
+          <div class="match-grid" id="matchGrid"><!-- injected --></div>
+
+          <div class="nav-proto">
+            <button class="btn btn-primary" id="submitPicks" disabled>Submit my picks</button>
+            <span id="pickCount" class="status-pill gold">0 selected</span>
+            <button class="btn btn-ghost" data-goto="2">Back</button>
+          </div>
+        </section>
+
+        <!-- STEP 4: Awaiting mutual -->
+        <section id="screen-4" class="panel" hidden>
+          <h4>Step 4 · Awaiting mutual selection</h4>
+          <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <h2 style="margin:0;">Selections submitted.</h2>
+            <span class="status-pill gold">Waiting</span>
+          </div>
+          <p style="color:var(--muted);max-width:640px;margin-top:0.6rem;">
+            We've notified the candidates you selected. You'll hear back within the
+            next matching window (usually 1–2 weeks). If any of them select you in
+            return, the committee will re-confirm the pairing and unblind identities.
+          </p>
+
+          <div class="card" style="margin-top:1rem;">
+            <h4 style="margin-bottom:0.6rem;">Your picks</h4>
+            <ul class="clean-list" id="pickList"></ul>
+          </div>
+
+          <div class="callout">
+            <strong>For the demo:</strong> skip ahead to see what happens when one of your
+            picks selects you back and the committee approves the pairing.
+          </div>
+
+          <div class="nav-proto">
+            <button class="btn btn-primary" data-goto="5">Simulate a mutual match</button>
+            <button class="btn btn-ghost" data-goto="3">Change my picks</button>
+          </div>
+        </section>
+
+        <!-- STEP 5: Unblinded -->
+        <section id="screen-5" class="panel" hidden>
+          <h4>Step 5 · Mutual match confirmed</h4>
+          <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <h2 style="margin:0;">You've been matched.</h2>
+            <span class="status-pill green">Unblinded</span>
+          </div>
+          <p style="color:var(--muted);max-width:640px;margin-top:0.6rem;">
+            The committee has re-confirmed the pairing. Both participants have been
+            removed from the matching pool and will receive a structured kickoff
+            guide by email.
+          </p>
+
+          <div class="reveal-card" id="revealCard"><!-- injected --></div>
+
+          <div class="callout">
+            <strong>Next in production:</strong> an email goes to both people introducing them,
+            sharing scheduling suggestions, and linking to the ISEV–SNEV mentoring agreement template.
+          </div>
+
+          <div class="nav-proto">
+            <button class="btn btn-primary" id="restartBtn2">Run the demo again</button>
+            <a href="index.html" class="btn btn-ghost">Back to landing page</a>
+          </div>
+        </section>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container" style="font-size:0.85rem;">
+      Prototype for the ISEV–SNEV Mentorship Program. All data on this page is fabricated for demonstration.
+      <a href="index.html">Return to landing page</a>.
+    </div>
+  </footer>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

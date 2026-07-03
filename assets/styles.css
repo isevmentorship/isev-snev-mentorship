@@ -93,13 +93,13 @@ section:first-of-type { border-top: none; }
   letter-spacing: 0.02em;
 }
 .nav-links { display: flex; gap: 1.4rem; align-items: center; }
-.nav-links a {
+.nav-links a:not(.btn) {
   text-decoration: none;
   color: var(--ink);
   font-size: 0.95rem;
   font-weight: 500;
 }
-.nav-links a:hover { color: var(--navy); }
+.nav-links a:not(.btn):hover { color: var(--navy); }
 .nav-links .btn { padding: 0.45rem 0.9rem; font-size: 0.9rem; }
 
 @media (max-width: 720px) {

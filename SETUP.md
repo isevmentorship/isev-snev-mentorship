@@ -61,13 +61,16 @@ email to the committee.
    auto-split the tabs into columns:
 
 ```
-timestamp	role	full_name	email	affiliation	country	timezone	languages	career_stage	membership	focus_areas	research_focus	career_topics_ranked	career_topics_ranked_text	mentee_goals	mentee_success	mentee_mentor_stage	mentee_timezone_flex	mentor_expertise	mentor_experience	mentor_slots	mentor_style	frequency	availability_window	accessibility	consent_prof_dev	consent_12_month	consent_review	consent_contact	consent_unblind
+timestamp	role	full_name	email	affiliation	country	timezone	languages	career_stage	membership	focus_areas	research_focus	career_topics_primary_ranked	career_topics_primary_text	career_topics_secondary_ranked	career_topics_secondary_text	mentee_goals	mentee_success	mentee_mentor_stage	mentee_timezone_flex	mentor_expertise	mentor_experience	mentor_slots	mentor_style	frequency	availability_window	accessibility	consent_prof_dev	consent_12_month	consent_review	consent_contact	consent_unblind
 ```
 
-> Heads-up: `career_topics_ranked` arrives as a JSON array
-> (`[{"topic":"grant_writing","rank":1},…]`). `career_topics_ranked_text`
-> is a friendly, comma-separated string like `"1. grant_writing, 2. networking"`
-> — use that column if you'd rather read it directly in the Sheet.
+> Heads-up: `career_topics_primary_ranked` and
+> `career_topics_secondary_ranked` arrive as JSON arrays
+> (`[{"topic":"grant_writing","rank":1},…]`). The matching `_text` columns
+> are friendly, comma-separated strings like
+> `"1. grant_writing, 2. networking"` — use those if you'd rather read
+> them directly in the Sheet. Mentors only fill in the primary tier;
+> their `career_topics_secondary_ranked` will be empty.
 
 4. Optional polish: bold row 1, then **View → Freeze → 1 row**.
 

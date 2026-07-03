@@ -1,8 +1,8 @@
-# ISEV–SNEV Mentorship Program — Landing Site
+# ISEV-SNEV Mentorship Program - Landing Site
 
 A static landing page, a built-in application form, and a clickable prototype of
 the matchmaker flow for the joint **ISEV × SNEV Mentorship Program**. Designed to
-be dropped into a new GitHub repository and published with GitHub Pages — no
+be dropped into a new GitHub repository and published with GitHub Pages - no
 servers, no build step.
 
 ## What's in this folder
@@ -30,7 +30,7 @@ to whichever service you wire up below.
 3. In the repo, open **Settings → Pages**, set source to `Deploy from a branch`,
    branch `main`, folder `/ (root)`. Save.
 4. Wait ~60 seconds, then visit `https://<your-username>.github.io/isev-snev-mentorship/`.
-5. Wire up the application form — see the next section.
+5. Wire up the application form - see the next section.
 
 At this point the landing page and the prototype already work. The application
 form will *show* the correct error and refuse to submit until you configure a
@@ -46,10 +46,10 @@ The form lives in `apply.html` and posts to a URL defined in its `action=` attri
 <form id="applyForm" action="https://formspree.io/f/YOUR_FORM_ENDPOINT" method="POST">
 ```
 
-You have two good options — pick one, get an endpoint URL, paste it in place of
+You have two good options - pick one, get an endpoint URL, paste it in place of
 `YOUR_FORM_ENDPOINT`.
 
-### Option A — Formspree (easiest, ~3 minutes)
+### Option A - Formspree (easiest, ~3 minutes)
 
 A hosted form handler. Free tier: 50 submissions/month, built-in spam filtering,
 auto-reply emails, submission archive.
@@ -57,7 +57,7 @@ auto-reply emails, submission archive.
 1. Go to [formspree.io](https://formspree.io) and sign up (email or GitHub login).
 2. Click **New Form**, give it a name (e.g., "ISEV-SNEV Mentorship"), and set
    the **Send to** address to the committee's inbox.
-3. Copy the form's endpoint — it looks like
+3. Copy the form's endpoint - it looks like
    `https://formspree.io/f/abcd1234`.
 4. Open `apply.html` and replace the entire `action` URL:
    ```html
@@ -82,11 +82,11 @@ integration requires a paid plan. For free, do one of:
 
 **Alternatives with the same flow:** [Basin](https://usebasin.com) (100/mo free),
 [Getform](https://getform.io) (50/mo free), [Web3Forms](https://web3forms.com) (unlimited, free),
-[FormSubmit](https://formsubmit.co) (no signup — just use
+[FormSubmit](https://formsubmit.co) (no signup - just use
 `action="https://formsubmit.co/you@example.org"`). All of these accept the same
 POST body as Formspree, so you just swap the URL.
 
-### Option B — Google Apps Script (free forever, email + Sheet in one step)
+### Option B - Google Apps Script (free forever, email + Sheet in one step)
 
 A little more setup, but nothing to pay for and you own the data end-to-end.
 Submissions land as **both** a row in a Google Sheet and an email to the committee.
@@ -102,7 +102,7 @@ Submissions land as **both** a row in a Google Sheet and an email to the committ
    availability_window  accessibility  consent_review  consent_contact
    consent_unblind
    ```
-   (Order doesn't matter — the script matches by name.)
+   (Order doesn't matter - the script matches by name.)
 3. From the Sheet, go to **Extensions → Apps Script**. Delete the default code
    and paste:
    ```js
@@ -158,7 +158,7 @@ that placeholder with your real endpoint URL, and redeploy.
 Shared (both roles): name, email, affiliation, country, time zone (standardized
 IANA dropdown), preferred language(s), career stage, ISEV/SNEV membership,
 EV focus areas (standardized multi-select), brief free-text description,
-ranked career topics (up to 5, weighted 1–5), meeting frequency,
+ranked career topics (up to 5, weighted 1-5), meeting frequency,
 availability window, accessibility notes, five consent checkboxes
 (professional-development acknowledgement, 12-month commitment, review,
 contact, unblinding).
@@ -215,7 +215,7 @@ python3 -m http.server 8000
 | `index.html` | Replace the brand monogram (`IS`) with an official logo if/when licensed |
 | `index.html` | Update the SNEV link in the footer and the `mailto:` for the committee |
 | `index.html` | Update the matching-cycle label (e.g., "Spring 2026") |
-| `prototype.html` | The sample applicant profile in Step 2 is hardcoded — edit to taste |
+| `prototype.html` | The sample applicant profile in Step 2 is hardcoded - edit to taste |
 | `assets/app.js` | `MENTOR_CANDIDATES` and `MENTEE_CANDIDATES` hold the fake demo candidates |
 
 ---
@@ -224,12 +224,12 @@ python3 -m http.server 8000
 
 The prototype is a **front-end-only walkthrough** so mentors, mentees, and the
 committee can see the intended user experience before any real system is built.
-It supports role selection, an "application accepted" confirmation screen, 1–3
+It supports role selection, an "application accepted" confirmation screen, 1-3
 blinded candidate profiles with fit scores and tags, selecting and submitting
 picks, and a simulated "mutual match" unblinding screen.
 
 It does **not** include: real authentication, application submission, admin
-review tooling, messaging, or persistence — that's what the application form +
+review tooling, messaging, or persistence - that's what the application form +
 Sheet/Formspree inbox is for in this early phase. When you're ready to replace
 the prototype with a real matching system, the visual components in
 `prototype.html` are structured to be re-used on top of a small backend

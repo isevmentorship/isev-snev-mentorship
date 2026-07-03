@@ -1,6 +1,6 @@
-# Airtable base provisioning — runbook
+# Airtable base provisioning - runbook
 
-One-shot setup to turn an empty Airtable base into the full ISEV–SNEV
+One-shot setup to turn an empty Airtable base into the full ISEV-SNEV
 Mentorship base described in `ARCHITECTURE.md` §4. After this runs, eight
 tables exist with all fields, single-select options, link fields, seeded
 taxonomies, and one row of default Settings.
@@ -20,7 +20,7 @@ Total time: about 5 minutes.
 ## Steps
 
 1. **Create an empty base.** In Airtable, click *Add a base* → *Start from scratch*.
-   Name it **ISEV-SNEV Mentorship** (or any name — you'll tell the script).
+   Name it **ISEV-SNEV Mentorship** (or any name - you'll tell the script).
    Leave the default "Table 1" in place; the script won't touch it, but you can
    delete it afterward.
 
@@ -71,10 +71,10 @@ Total time: about 5 minutes.
 ## What this script does *not* do
 
 - It doesn't set up Interface Designer dashboards (that has to be done in the
-  UI — it's a separate product from the base API).
-- It doesn't create views or filters — those go on top of the tables and are
+  UI - it's a separate product from the base API).
+- It doesn't create views or filters - those go on top of the tables and are
   quick to create once the schema exists.
-- It doesn't connect Dropbox Sign — that's Phase 5.
+- It doesn't connect Dropbox Sign - that's Phase 5.
 
 ## Re-running
 
@@ -88,17 +88,17 @@ So you can safely re-run it if you want to add future schema updates.
 
 ## Troubleshooting
 
-**"NOT_FOUND: Could not find base …"** — The token doesn't have access to that
+**"NOT_FOUND: Could not find base …"** - The token doesn't have access to that
 base. Open the token at <https://airtable.com/create/tokens>, scroll to
 *Access*, add the base, save.
 
-**"INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND"** — The token is missing a scope.
+**"INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND"** - The token is missing a scope.
 Recreate it with all four scopes listed in *Prerequisites*.
 
-**"FIELD_NAME_ALREADY_EXISTS" on a topping-up pass** — Harmless; the script
+**"FIELD_NAME_ALREADY_EXISTS" on a topping-up pass** - Harmless; the script
 expected the field to be missing but someone else already added it. Re-run.
 
-**Anything else** — The script prints the full Airtable error body. If it's
+**Anything else** - The script prints the full Airtable error body. If it's
 unclear, paste it back and we'll diagnose.
 
 ## After the script finishes
@@ -107,4 +107,4 @@ unclear, paste it back and we'll diagnose.
    old one and issue a new one (the same scopes). Paste the new token into
    whatever Phase 2 plumbing we set up.
 2. **Delete the placeholder "Table 1"** that the base was created with.
-3. **Add Interface Designer dashboards** (Phase 3) — I'll send mock layouts.
+3. **Add Interface Designer dashboards** (Phase 3) - I'll send mock layouts.

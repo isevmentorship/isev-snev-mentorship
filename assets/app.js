@@ -1,5 +1,5 @@
 /* ============================================
-   ISEV–SNEV Mentorship Program · Prototype
+   ISEV-SNEV Mentorship Program · Prototype
    Front-end only. No data is saved or sent.
    ============================================ */
 

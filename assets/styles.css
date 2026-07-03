@@ -1,5 +1,5 @@
 /* ============================================
-   ISEV–SNEV Mentorship Program
+   ISEV-SNEV Mentorship Program
    Clean academic default stylesheet
    ============================================ */
 
@@ -210,7 +210,7 @@ details.faq summary {
 details.faq summary::after {
   content: "+"; font-family: var(--font-serif); font-size: 1.2rem; color: var(--muted);
 }
-details.faq[open] summary::after { content: "–"; }
+details.faq[open] summary::after { content: "-"; }
 details.faq .faq-body { padding-top: 0.5rem; color: var(--ink); }
 
 /* ----- Footer ----- */

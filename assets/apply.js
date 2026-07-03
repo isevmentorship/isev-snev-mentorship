@@ -1,5 +1,5 @@
 /* ============================================
-   ISEV–SNEV Mentorship Program · Application form
+   ISEV-SNEV Mentorship Program · Application form
    - Reveals the rest of the form once a role is chosen
    - Shows mentor- or mentee-specific fields based on role
    - Builds two ranked career-topic pickers (primary + secondary for mentees;
@@ -15,7 +15,7 @@
   "use strict";
 
   // Canonical career-topic list (must match ARCHITECTURE.md §3.1).
-  // Keep order stable — both sides see the same list in the same order.
+  // Keep order stable - both sides see the same list in the same order.
   const CAREER_TOPICS = [
     { id: "career_transition", label: "Career transitions (e.g., postdoc to PI, academia to industry)" },
     { id: "industry_advancement", label: "Industry career advancement" },
@@ -26,7 +26,7 @@
     { id: "communication", label: "Scientific communication and presentation" },
     { id: "leadership", label: "Leadership and management" },
     { id: "long_term_trajectory", label: "Long-term career trajectory" },
-    { id: "work_life", label: "Work–life balance and sustainability" },
+    { id: "work_life", label: "Work-life balance and sustainability" },
     { id: "dei", label: "Diversity, equity and inclusion" },
     { id: "publishing", label: "Publishing strategy" },
     { id: "mentoring_others", label: "Mentoring others" },
@@ -100,7 +100,7 @@
       );
       const blank = document.createElement("option");
       blank.value = "";
-      blank.textContent = "—";
+      blank.textContent = "-";
       rank.appendChild(blank);
       for (let r = 1; r <= MAX_TIER_PICKS; r++) {
         const opt = document.createElement("option");
@@ -204,7 +204,7 @@
     } else if (t.matches(".topic-rank")) {
       const newVal = t.value;
       if (!newVal) return;
-      // Prevent duplicate ranks within the same tier — swap with whoever
+      // Prevent duplicate ranks within the same tier - swap with whoever
       // had that rank.
       const grid = document.getElementById(picker.gridId);
       const others = Array.from(grid.querySelectorAll(".topic-rank"))
@@ -233,7 +233,7 @@
     countEl.classList.add("error");
     countEl.textContent =
       "Pick up to " + MAX_TIER_PICKS + " " + picker.countLabel.toLowerCase() +
-      " topics — deselect one first.";
+      " topics - deselect one first.";
     setTimeout(() => updateCount(picker), 1800);
   }
 
@@ -285,7 +285,7 @@
     if (topicsIntro) {
       topicsIntro.textContent = role === "mentor"
         ? "Tell us what you're best positioned to mentor on. Rank your top " +
-          "5 — the matching algorithm uses these heavily."
+          "5 - the matching algorithm uses these heavily."
         : "Rank the career topics you want to work on. You'll fill in your " +
           "primary priorities first, then optionally add a secondary list " +
           "weighted lower in matching.";
@@ -335,7 +335,7 @@
     const multiValued = new Set(["languages", "focus_areas", "availability_window"]);
 
     formData.forEach((value, key) => {
-      // Skip picker internals — we serialize those explicitly below.
+      // Skip picker internals - we serialize those explicitly below.
       if (key.indexOf("topic_selected_") === 0) return;
       if (key.indexOf("topic_rank_primary_") === 0) return;
       if (key.indexOf("topic_rank_secondary_") === 0) return;

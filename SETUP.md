@@ -1,4 +1,4 @@
-# Setup walkthrough — ISEV–SNEV Mentorship Site
+# Setup walkthrough - ISEV-SNEV Mentorship Site
 
 End-to-end instructions to get your site live and the application form wired up
 to a Google Sheet + committee email. About 20 minutes total, no command line
@@ -7,22 +7,22 @@ required.
 Before you start, have three tabs open:
 
 1. Your GitHub account (signed in).
-2. A Google account (any — this is what will own the Sheet + Apps Script).
+2. A Google account (any - this is what will own the Sheet + Apps Script).
 3. A file-explorer window on the `isev-snev-mentorship/` folder.
 
 ---
 
-## Part 1 — Upload the files to GitHub (5 min)
+## Part 1 - Upload the files to GitHub (5 min)
 
 1. Go to <https://github.com/new>.
 2. **Repository name:** `isev-snev-mentorship` (any name works; it appears in the URL).
-3. Leave it **Public**. Leave every checkbox **unchecked** — no README, no
+3. Leave it **Public**. Leave every checkbox **unchecked** - no README, no
    .gitignore, no license. You already have those.
 4. Click **Create repository**.
 5. On the empty repo page, click the link **"uploading an existing file"**.
 6. Open the `isev-snev-mentorship/` folder on your computer. Select **all** of
    its contents (including the `assets/` subfolder and the hidden `.nojekyll`
-   file — you may need to enable "show hidden files" in your OS to see it).
+   file - you may need to enable "show hidden files" in your OS to see it).
    Drag everything onto the GitHub upload area.
 7. Scroll down, add a commit message like "initial site", click **Commit changes**.
 
@@ -34,7 +34,7 @@ Before you start, have three tabs open:
 
 ---
 
-## Part 2 — Enable GitHub Pages (2 min)
+## Part 2 - Enable GitHub Pages (2 min)
 
 1. In your repo, click **Settings** (top-right of the repo navigation).
 2. Left sidebar → **Pages**.
@@ -44,11 +44,11 @@ Before you start, have three tabs open:
    live URL, e.g. `https://<your-username>.github.io/isev-snev-mentorship/`.
 
 ✅ Open that URL. The landing page and the prototype both work. The Apply form
-loads but will refuse to submit — that's expected until Part 4.
+loads but will refuse to submit - that's expected until Part 4.
 
 ---
 
-## Part 3 — Google Sheet + Apps Script (10 min)
+## Part 3 - Google Sheet + Apps Script (10 min)
 
 This is what makes each form submission land in **both** a Sheet row and an
 email to the committee.
@@ -68,7 +68,7 @@ timestamp	role	full_name	email	affiliation	country	timezone	languages	career_sta
 > `career_topics_secondary_ranked` arrive as JSON arrays
 > (`[{"topic":"grant_writing","rank":1},…]`). The matching `_text` columns
 > are friendly, comma-separated strings like
-> `"1. grant_writing, 2. networking"` — use those if you'd rather read
+> `"1. grant_writing, 2. networking"` - use those if you'd rather read
 > them directly in the Sheet. Mentors only fill in the primary tier;
 > their `career_topics_secondary_ranked` will be empty.
 
@@ -121,11 +121,11 @@ function doPost(e) {
    own script) → **Advanced → Go to [project] (unsafe) → Allow**.
 6. On the success screen, **copy the Web app URL**. It looks like:
    `https://script.google.com/macros/s/AKfycb……/exec`
-7. Keep this tab open — you need the URL in Part 4.
+7. Keep this tab open - you need the URL in Part 4.
 
 ---
 
-## Part 4 — Wire the form to your Apps Script (2 min)
+## Part 4 - Wire the form to your Apps Script (2 min)
 
 1. On GitHub, open your repo and click `apply.html`.
 2. Click the **pencil icon** (top-right of the file view) to edit.
@@ -149,7 +149,7 @@ GitHub Pages redeploys automatically in ~30 seconds.
 
 ---
 
-## Part 5 — Test it (2 min)
+## Part 5 - Test it (2 min)
 
 1. Open your live Apply page.
 2. Fill in the form as a fake applicant and submit.
@@ -198,7 +198,7 @@ Google Sheet.
 ## Help / troubleshooting
 
 - **Pages URL shows a 404 for a few minutes after enabling.** Normal. Give it
-  2–3 minutes, hard-refresh (Ctrl/⌘+Shift+R).
+  2-3 minutes, hard-refresh (Ctrl/⌘+Shift+R).
 - **Form says "This form is not configured yet".** The `action=` attribute in
   `apply.html` still contains the literal text `YOUR_FORM_ENDPOINT`. Part 4.
 - **Form says "Submission failed".** Open your Apps Script → **Executions**
@@ -206,5 +206,5 @@ Google Sheet.
   error. Common cause: the Sheet headers don't match the form field names, or
   the deployment access is not "Anyone."
 - **Want to rename columns?** You can rearrange or rename headers in the Sheet
-  freely — the script matches by name, not by position. Just keep the header
+  freely - the script matches by name, not by position. Just keep the header
   text identical to the form field `name` attributes in `apply.html`.

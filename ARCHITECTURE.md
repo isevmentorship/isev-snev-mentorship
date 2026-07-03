@@ -1,15 +1,15 @@
-# ISEV–SNEV Mentorship Program — System Architecture
+# ISEV-SNEV Mentorship Program - System Architecture
 
 Version 0.2 · specification for build · April 2026
 
-**Revision history.** 0.2 (2026-04-22) — incorporated review feedback:
+**Revision history.** 0.2 (2026-04-22) - incorporated review feedback:
 capacity-aware mentor pool removal (§3.4, §4.1, §5.3, §6.1); cross-institution
 conflict detection filter (§4.1, §4.2, §6.7, §10.3, §10.6); 30-day unmatched
 escalation (§7); default hold on below-threshold matches (§7); refined hero
 tagline (§12); canonical `Settings` table (§4.7); §16 resolutions captured.
-0.1 (2026-04-22) — initial draft.
+0.1 (2026-04-22) - initial draft.
 
-This document specifies the full target system for the ISEV–SNEV Mentorship
+This document specifies the full target system for the ISEV-SNEV Mentorship
 Program: data model, user flows, matching algorithm, signing, admin dashboard,
 security, and a phased roadmap. It is the plan we will build against, not a
 status report on what is built.
@@ -42,8 +42,8 @@ status report on what is built.
 
 The system pairs mentors and mentees in the extracellular-vesicle research
 community for 12-month professional-development relationships. Applicants
-complete a standardized form; a joint ISEV–SNEV committee reviews applications
-and generates 1–3 blinded candidate matches based on locality (± 5 h time
+complete a standardized form; a joint ISEV-SNEV committee reviews applications
+and generates 1-3 blinded candidate matches based on locality (± 5 h time
 zone), ranked topic-area preferences, and secondary focus-area overlap. Both
 sides select mutual interest from blinded profiles; the committee re-confirms
 and triggers electronic signing of the Mentorship Program Compact. After both
@@ -56,8 +56,8 @@ The system is built from three services stitched together: a static public
 website (GitHub Pages) for the landing page and application form; an Airtable
 base with Interface Designer for the data layer, admin dashboard, and email
 automations; and Dropbox Sign for compact signatures. There is no bespoke
-backend to operate — everything runs on managed SaaS. Estimated recurring
-cost is roughly US$40–70 per month for modest volume.
+backend to operate - everything runs on managed SaaS. Estimated recurring
+cost is roughly US$40-70 per month for modest volume.
 
 The deliberately boring architecture is the point. It puts all custom logic
 in Airtable formulas and automations that a non-engineer committee member can
@@ -72,12 +72,12 @@ migrate the data layer to a real database and keep the rest.
 
 | Component | Purpose | Who owns it |
 |---|---|---|
-| **Public website** (GitHub Pages) | Landing page, application form, prototype/preview | ISEV–SNEV GitHub org |
-| **Airtable base** | Applicants, matches, taxonomies, statuses, history | ISEV–SNEV Airtable account |
+| **Public website** (GitHub Pages) | Landing page, application form, prototype/preview | ISEV-SNEV GitHub org |
+| **Airtable base** | Applicants, matches, taxonomies, statuses, history | ISEV-SNEV Airtable account |
 | **Airtable Interfaces** | Admin dashboard, match review, ad-hoc pairing, bulk email | Same base |
 | **Airtable Automations** | Emails, match generation, reminders, webhooks | Same base |
-| **Dropbox Sign** | Compact template, signing flow, audit trail, webhook | ISEV–SNEV Dropbox Sign account |
-| **Apps Script or Cloudflare Worker** (light) | Thin proxy: accepts POST from the form, writes to Airtable via API | ISEV–SNEV Google or Cloudflare account |
+| **Dropbox Sign** | Compact template, signing flow, audit trail, webhook | ISEV-SNEV Dropbox Sign account |
+| **Apps Script or Cloudflare Worker** (light) | Thin proxy: accepts POST from the form, writes to Airtable via API | ISEV-SNEV Google or Cloudflare account |
 | **Mail** | Automation-generated emails to applicants/admin | Airtable default sender; optionally custom domain |
 
 Data-flow summary:
@@ -115,13 +115,13 @@ consistent across cycles.
 ### 3.1 Mentorship topic areas (ranked, two tiers for mentees)
 
 **Mentees** pick and rank two tiers:
-- **Primary tier** — up to 5 topics ranked 1–5 (their top priorities for
+- **Primary tier** - up to 5 topics ranked 1-5 (their top priorities for
   the relationship; weighted fully in matching).
-- **Secondary tier** — up to 5 additional topics ranked 1–5 (things they'd
+- **Secondary tier** - up to 5 additional topics ranked 1-5 (things they'd
   also like to discuss at lower priority; multiplied by
   `secondary_topic_weight` in Settings, default **0.30**).
 
-A topic can appear in only one tier — the UI enforces this at selection
+A topic can appear in only one tier - the UI enforces this at selection
 time. A mentee may rank all 14 topics across the two tiers if they want to.
 
 **Mentors** pick and rank up to 5 topics (single tier) that they are
@@ -137,7 +137,7 @@ locality.
 7. Communication, presentation, and public speaking
 8. Leadership, management, and team-building
 9. Long-term career trajectory and goal setting
-10. Work–life integration and wellbeing
+10. Work-life integration and wellbeing
 11. Navigating underrepresentation / DEI in STEM
 12. Publishing strategy (authorship, journal selection, peer review)
 13. Mentoring and supervising others
@@ -183,7 +183,7 @@ Application status (Applicants table):
   unmatched mentee
 - `declined` · not admitted (with reason)
 - `withdrawn` · applicant withdrew
-- `matched` · fully allocated — mentee has a match, or mentor's capacity is
+- `matched` · fully allocated - mentee has a match, or mentor's capacity is
   filled. Hidden from matching.
 - `graduated` · completed a 12-month cycle
 - `re-enrollable` · graduate asked if they want another cycle
@@ -234,7 +234,7 @@ Airtable base with five core tables. Field names are the implementation names.
 | `membership` | Single-select | ISEV only / SNEV only / both / neither |
 | `topic_primary_rank_1` … `_5` | Single-select × 5 | From §3.1. For mentees: primary priorities. For mentors: topics they mentor on. |
 | `topic_secondary_rank_1` … `_5` | Single-select × 5 | From §3.1. Mentee-only in the UI; mentors leave these blank. |
-| `topic_offered` | Multi-select | Legacy — kept for admin ad-hoc use, no longer a primary matching signal. |
+| `topic_offered` | Multi-select | Legacy - kept for admin ad-hoc use, no longer a primary matching signal. |
 | `focus_areas` | Multi-select | §3.2 |
 | `short_bio` | Long text | Shown on blinded card (scrubbed by admin if needed) |
 | `goals_summary` | Long text | Blinded card |
@@ -242,7 +242,7 @@ Airtable base with five core tables. Field names are the implementation names.
 | `availability_windows` | Multi-select | Weekday AM/PM/EVE/weekends |
 | `mentor_capacity` | Number | Mentor only: support level of 1, 2, or 3 mentees at a time |
 | `active_match_count` | Formula | Count of linked `Matches` with status in `{admin-approved, compact-sent, compact-signed, active}` |
-| `slots_remaining` | Formula | For mentors: `mentor_capacity - active_match_count`. For mentees: `1 - active_match_count`. Drives pool removal — when this hits 0 and status isn't already `matched`, an automation flips the status. |
+| `slots_remaining` | Formula | For mentors: `mentor_capacity - active_match_count`. For mentees: `1 - active_match_count`. Drives pool removal - when this hits 0 and status isn't already `matched`, an automation flips the status. |
 | `prof_dev_ack` | Checkbox | "I understand this is professional development, not technical research advice" |
 | `consent_*` | Checkbox × 3 | Existing consent boxes |
 | `submitted_at` | Created time | |
@@ -262,7 +262,7 @@ Airtable base with five core tables. Field names are the implementation names.
 | `score_topic_overlap` | Number | |
 | `score_focus_overlap` | Number | |
 | `score_timezone_delta_hours` | Number | |
-| `institution_conflict` | Formula | True when mentor and mentee share a normalized affiliation string, share a non-consumer email domain, or are flagged by the fuzzy-match script. Soft warning — admin can override. |
+| `institution_conflict` | Formula | True when mentor and mentee share a normalized affiliation string, share a non-consumer email domain, or are flagged by the fuzzy-match script. Soft warning - admin can override. |
 | `admin_generated` | Checkbox | True when admin created the match ad-hoc (§10.6). Skips mutual-interest gate. |
 | `mentor_selected` | Checkbox | Mentor picked this mentee |
 | `mentee_selected` | Checkbox | Mentee picked this mentor |
@@ -340,7 +340,7 @@ All tunable knobs live in a one-row table the admin can edit:
    pool. We'll send candidate matches within X weeks."
 6. When the matching run produces candidates for this applicant, an
    automation emails them a link (unique per applicant, token-based) to a
-   **blinded candidate view** showing 1–3 anonymized profiles with fit scores.
+   **blinded candidate view** showing 1-3 anonymized profiles with fit scores.
 7. Applicant marks which candidates they'd like to proceed with. Their
    selections update `mentor_selected`/`mentee_selected` on each Match record.
 8. If a counterpart also selects them → `status → mutual-interest`, admin is
@@ -364,10 +364,10 @@ This page reads match records filtered by the applicant's token. We implement
 it one of two ways (final choice in Phase 1):
 
 - **(a) Airtable Portal**: use Softr or Airtable's own sharable Interface
-  (logged-in Airtable account required — unlikely to work for applicants).
+  (logged-in Airtable account required - unlikely to work for applicants).
 - **(b) Static token page**: applicant's link contains a signed token.
   A Cloudflare Worker reads the token, fetches the matches from the Airtable
-  API, and renders HTML. Recommended — keeps applicants out of Airtable
+  API, and renders HTML. Recommended - keeps applicants out of Airtable
   entirely.
 
 ### 5.3 Admin review and approval flow
@@ -414,7 +414,7 @@ proposed Match records. For each unmatched `accepted` applicant in the pool:
 2. **Locality.** Compute the absolute UTC-offset difference between the
    applicant and the candidate. Discard any candidate whose offset differs by
    more than 5 hours. Hard filter, not a score component.
-3. **Cross-institution** (soft filter — default on, admin-overridable per-run
+3. **Cross-institution** (soft filter - default on, admin-overridable per-run
    via a Settings toggle). See §6.7.
 4. **Never-match list** (§6.8).
 
@@ -423,8 +423,8 @@ this run.
 
 ### 6.2 Topic-area score (primary)
 
-Per §3.1, mentees rank two tiers (primary 1–5, secondary 1–5) and mentors rank a
-single tier (1–5). The score uses a position-weighted overlap so that a top
+Per §3.1, mentees rank two tiers (primary 1-5, secondary 1-5) and mentors rank a
+single tier (1-5). The score uses a position-weighted overlap so that a top
 priority counts more than a fifth-choice priority, and the mentee's secondary
 tier counts less than their primary tier.
 
@@ -452,7 +452,7 @@ either tier), check whether the mentor offered `t` at some rank `r_o`:
 equals `secondary_topic_weight` (default 0.30, see §4.7) when it's in the
 mentee's secondary tier.
 
-To keep the result on a 0.00–1.00 scale we compute two tier-specific overlap
+To keep the result on a 0.00-1.00 scale we compute two tier-specific overlap
 sums and combine them:
 
 ```
@@ -470,7 +470,7 @@ identical rank hits 1.00. Secondary contributions are scaled down by
 round out matches but cannot outweigh their stated primary priorities.
 
 Symmetry note: when ranking candidates from the mentor's side (mentor-initiated
-queries, admin re-runs), the algorithm is identical — the mentor's rank stands
+queries, admin re-runs), the algorithm is identical - the mentor's rank stands
 in for whichever side's ranks are being evaluated. Mentors have no secondary
 tier, so `secondary_overlap` is computed only against the mentee's secondary
 list.
@@ -479,7 +479,7 @@ list.
 
 Jaccard similarity on focus-area tags:
 
-`score_focus_overlap` = |intersection| / |union| (range 0.00–1.00).
+`score_focus_overlap` = |intersection| / |union| (range 0.00-1.00).
 
 ### 6.4 Total score
 
@@ -513,8 +513,8 @@ any one of them trips the flag:
 
 1. **Normalized affiliation match.** Lowercase both sides, strip punctuation
    and common filler words ("university of", "institute", "the", "school of",
-   "dept", commas, ampersands). If the resulting strings are equal — or if
-   one is a substring of the other with length ≥ 8 characters — flag.
+   "dept", commas, ampersands). If the resulting strings are equal - or if
+   one is a substring of the other with length ≥ 8 characters - flag.
 2. **Email domain match.** Compare `email_domain` fields. If both sides
    share a domain and that domain is **not** on a small allow-list of
    consumer providers (`gmail.com`, `outlook.com`, `hotmail.com`,
@@ -530,7 +530,7 @@ record.
 
 **Behaviour.** By default, flagged pairs are excluded from the candidate set
 entirely (the applicant never sees them). A Setting (`allow_same_institution`)
-can be toggled on if admin knows the conflict is fine — useful for large
+can be toggled on if admin knows the conflict is fine - useful for large
 institutions where the mentor and mentee are in unrelated departments. Admin
 can also create an ad-hoc match (§10.6) that bypasses the filter; in that
 case the warning is shown on the approval screen and must be explicitly
@@ -553,17 +553,17 @@ matcher excludes these regardless of other scores.
 
 **Zero counterparts available.** The applicant is accepted into the pool;
 their dashboard email says: "You're accepted. The pool is thin for your
-region/topic right now — we'll match you as soon as a suitable counterpart
+region/topic right now - we'll match you as soon as a suitable counterpart
 joins." An Airtable view surfaces these applicants to admin as **Awaiting
 counterpart**.
 
 **Fewer than three matches pass the filter.** Send the available one or two.
-An admin-only flag on the applicant's row notes "Thin candidate pool — watch
+An admin-only flag on the applicant's row notes "Thin candidate pool - watch
 for new mentors."
 
 **Best score below 50%.** A formula on the Match record flags it as
 `below_threshold`. The default behaviour is **hold and wait for the next pool
-refresh** — the algorithm does not surface the match to the applicant. Admin
+refresh** - the algorithm does not surface the match to the applicant. Admin
 can override by using the ad-hoc pairing UI (§11) to propose a
 close-but-imperfect match with an explanatory note attached, at which point
 the match enters the normal approval and signing flow.
@@ -622,7 +622,7 @@ endpoint (Cloudflare Worker or Apps Script) that:
 ### 8.4 Legal posture
 
 The compact is a program-expectations document, not a binding contract.
-Dropbox Sign is sufficient — electronic signature is legally recognized under
+Dropbox Sign is sufficient - electronic signature is legally recognized under
 the U.S. ESIGN Act and EU eIDAS for this use, and Dropbox Sign produces an
 audit trail that satisfies the committee's recordkeeping needs. We do not
 need anything heavier (e.g., notarization, witness signatures).
@@ -633,14 +633,14 @@ need anything heavier (e.g., notarization, witness signatures).
 
 On `status → active`, an Airtable Automation sends two emails:
 
-- **Mentor email** — personalized, attaches `MentorToolkit.pdf` from the
+- **Mentor email** - personalized, attaches `MentorToolkit.pdf` from the
   Airtable attachment field on a `Resources` record (or links to a Google
   Drive viewer link). Body: kickoff agenda, link to the signed compact, link
   to the first-meeting checklist.
-- **Mentee email** — symmetric, attaches `MenteeToolkit.pdf`.
+- **Mentee email** - symmetric, attaches `MenteeToolkit.pdf`.
 
 The toolkit PDFs are uploaded to the `Resources` table once by admin. Updating
-a toolkit means uploading a new version to Airtable — no site redeploy needed.
+a toolkit means uploading a new version to Airtable - no site redeploy needed.
 
 `toolkits_sent_at` is stamped on the Match record for reporting.
 
@@ -667,7 +667,7 @@ Kanban by status. `mutual-interest` column gets an **Approve** button that
 triggers the signing flow. Score badges on each card. If
 `institution_conflict` is true (§6.7), the card shows a yellow warning chip
 and the Approve button requires explicit acknowledgement ("I've verified
-these two are in unrelated units of the same institution — proceed").
+these two are in unrelated units of the same institution - proceed").
 
 ### 10.4 Active Pairs
 
@@ -682,14 +682,14 @@ has a built-in send-email-to-selected action. Body templates:
 
 - "Check-in: how's your mentorship going?"
 - "Final survey"
-- "We're running another cycle — interested in mentoring again?"
+- "We're running another cycle - interested in mentoring again?"
 
 ### 10.6 Ad-hoc pairing
 
 Two-pane view: left lists unmatched mentees, right lists mentors with
 `slots_remaining > 0`. Admin selects one from each side, clicks **Pair**. A
 scripted action creates a `proposed` Match with `admin_generated: true` so it
-skips the normal mutual-interest gate — both sides get an email saying the
+skips the normal mutual-interest gate - both sides get an email saying the
 committee proposes this match; normal signing flow follows. The pairing
 screen computes and displays the same score and cross-institution warning
 as the algorithmic flow, so admin can see why the algorithm didn't surface
@@ -721,14 +721,14 @@ Ad-hoc pairing is described in §10.6. The re-enrollment flow works like this:
    appears in the §10.7 queue.
 3. Admin clicks Invite. Email: "Would you like to mentor another mentee in
    the next cycle? Your existing profile is on file." Two buttons (mailto
-   links or Airtable form responses) — Yes, re-open me / No, thanks for the
+   links or Airtable form responses) - Yes, re-open me / No, thanks for the
    invitation.
 4. Yes → status `accepted`, profile goes back into the matching pool with
    the next cycle label.
 5. The mentor can update their profile before re-entering (pre-fill a form
    with their prior answers).
 
-Mentees follow the same flow but default to "not re-enrollable" — the
+Mentees follow the same flow but default to "not re-enrollable" - the
 program is not intended as a recurring service for the same mentee.
 
 ---
@@ -744,7 +744,7 @@ development, not technical research advice. Specific edits:
 | Hero lede | "…based on training goals, career stage…" | "…based on career-development goals, career stage…" |
 | About | "training goals" × N | "professional-development goals" |
 | Eligibility (mentee) | "…navigating a postdoc move" | "…navigating a postdoc move. The program supports career and professional growth, not project-specific technical guidance." |
-| FAQ | New item: "Is this for technical research advice?" | "No. This program supports career development — networking, career transitions, leadership, grant writing, communication. For technical guidance on specific experiments, please use your lab mentors and peer networks." |
+| FAQ | New item: "Is this for technical research advice?" | "No. This program supports career development - networking, career transitions, leadership, grant writing, communication. For technical guidance on specific experiments, please use your lab mentors and peer networks." |
 | Apply (step 4 mentee header) | "What you're hoping to get out of mentorship" | "Professional-development goals" |
 | Apply consent | (new checkbox) | "I understand this program is for professional development and not for direct scientific or technical advice on specific experiments or projects." |
 | Prototype narrative | "Your mentor" | "Your professional-development mentor" |
@@ -795,7 +795,7 @@ A short notice linked from `apply.html`:
 
 - What we collect (form fields).
 - How it is used (matching, program administration, automated emails).
-- Who can see it (ISEV–SNEV matching committee and the named counterpart
+- Who can see it (ISEV-SNEV matching committee and the named counterpart
   after mutual selection and admin approval).
 - How long we keep it (see retention, below).
 - How to request correction or deletion (committee email).
@@ -829,11 +829,11 @@ Recurring (monthly):
 | Dropbox Sign Standard | 3 senders, API, templates | ~$25/month |
 | Cloudflare (Workers) | Free tier sufficient for webhook proxy | $0 |
 | GitHub Pages | Public repo | $0 |
-| Google Workspace (if using Gmail sending) | N/A — use Airtable email | $0 |
-| Domain (optional) | e.g. `mentorship.isev.org` | ~$1–2/month amortized |
-| **Total** | | **~$45–70/month** |
+| Google Workspace (if using Gmail sending) | N/A - use Airtable email | $0 |
+| Domain (optional) | e.g. `mentorship.isev.org` | ~$1-2/month amortized |
+| **Total** | | **~$45-70/month** |
 
-One-time setup effort (not dollars, but hours): roughly 30–50 hours of
+One-time setup effort (not dollars, but hours): roughly 30-50 hours of
 engineering and content work to implement the roadmap below.
 
 Scale note: Airtable's per-base record limit on Team plan is 50,000 records.
@@ -848,7 +848,7 @@ Six phases, each with a clear deliverable and test criterion. Phases can run
 in parallel where dependencies allow; I've listed them in the order I'd
 suggest tackling them.
 
-### Phase 0 — Content and language pass (1–2 days)
+### Phase 0 - Content and language pass (1-2 days)
 
 - Apply every edit in §12 to `index.html`, `apply.html`, `prototype.html`.
 - Add the "Have a question?" admin-email button on `apply.html`.
@@ -863,7 +863,7 @@ Script for now (backward compatible).
 
 Test: full read-through by committee; form submit still works.
 
-### Phase 1 — Airtable base + taxonomies (2–3 days)
+### Phase 1 - Airtable base + taxonomies (2-3 days)
 
 - Create Airtable base, all five tables per §4.
 - Populate `Topic Areas`, `Focus Areas`, `Time Zones`, `Settings` lookup tables.
@@ -875,7 +875,7 @@ Deliverable: the base, documented in `AIRTABLE.md`.
 
 Test: admin can create a sample applicant and see all fields behave.
 
-### Phase 2 — Form → Airtable pipeline (1–2 days)
+### Phase 2 - Form → Airtable pipeline (1-2 days)
 
 - Write a Cloudflare Worker (or replace the Apps Script) that accepts form
   POSTs, validates, and writes to Airtable via the API.
@@ -888,7 +888,7 @@ Deliverable: live form submits land in Airtable's Applicants table.
 Test: submit five test applications, verify all fields populate correctly;
 verify that malformed submissions are rejected.
 
-### Phase 3 — Admin dashboard (3–5 days)
+### Phase 3 - Admin dashboard (3-5 days)
 
 - Build Interface Designer pages per §10 (Home, Applications, Proposed
   Matches, Active Pairs, Ad-hoc, Re-enrollment).
@@ -901,7 +901,7 @@ and for manually-generated matches.
 Test: admin walks through a hypothetical cycle with 5 applicants of each
 role, approving matches end-to-end (signing flow still stubbed).
 
-### Phase 4 — Matching algorithm (2–3 days)
+### Phase 4 - Matching algorithm (2-3 days)
 
 - Nightly Automation script per §6.
 - Regenerate button on applicant detail view.
@@ -916,7 +916,7 @@ Test: run a synthetic cycle with 10 mentors and 15 mentees, confirm match
 distribution looks sensible; sanity-check edge cases (thin pool, ties,
 below-threshold).
 
-### Phase 5 — Dropbox Sign integration (2–3 days)
+### Phase 5 - Dropbox Sign integration (2-3 days)
 
 - Upload the compact to Dropbox Sign as a template with two signer roles.
 - Admin Approve automation → Dropbox Sign API.
@@ -929,7 +929,7 @@ matches flip to compact-signed automatically.
 Test: end-to-end run with a test mentor and mentee, including the case where
 one signer delays past a reminder threshold.
 
-### Phase 6 — Toolkit delivery, reminders, close-out (1–2 days)
+### Phase 6 - Toolkit delivery, reminders, close-out (1-2 days)
 
 - Toolkit PDFs uploaded to `Resources`.
 - `compact-signed` → active automation sends toolkit emails.
@@ -942,7 +942,7 @@ its own.
 Test: synthetic end-to-end run using Airtable's time simulation (manually
 adjusting dates).
 
-### Phase 7 — Production launch (1 day)
+### Phase 7 - Production launch (1 day)
 
 - Privacy notice live.
 - Committee training (1-hour walkthrough + recorded screencast).
@@ -953,7 +953,7 @@ adjusting dates).
 Deliverable: program in production.
 
 **Total estimated calendar time if one person is working on it: ~4 weeks.**
-In practice, allow 6–8 weeks with normal review cycles, content writing, and
+In practice, allow 6-8 weeks with normal review cycles, content writing, and
 stakeholder sign-off.
 
 ---
@@ -967,19 +967,19 @@ deferred to implementation time):
 |---|---|---|
 | 1 | Mentor and mentee toolkit PDFs | Pending upload. User will provide when Phase 6 begins. |
 | 2 | Committee email for admin notifications | **isevmentorship@gmail.com** |
-| 3 | Airtable seat count | 2–3 seats, **Team plan** |
+| 3 | Airtable seat count | 2-3 seats, **Team plan** |
 | 4 | Cycle cadence | **Rolling admission** (the `cycle_label` field becomes informational rather than a hard boundary). |
 | 5 | Decline reasons | **Fixed list** with admin ability to customize the outgoing message on a per-application basis. Proposed list: "Ineligible for program", "Pool imbalance", "Incomplete application", "Other". |
 | 6 | Institutional approvals | **Not required.** Proceeding without DPO review. |
 | 7 | Branding | Current plain monogram and palette are **approved** to continue. |
-| 8 | Closeout survey | **Drafted** — see `CLOSEOUT_SURVEY.md` alongside this document. |
+| 8 | Closeout survey | **Drafted** - see `CLOSEOUT_SURVEY.md` alongside this document. |
 
 Still pending (nothing blocking; resolve during the relevant phase):
 
 - The mentor toolkit PDF and the mentee toolkit PDF, uploaded to Airtable
   Resources records in Phase 6.
 - Final wording of the applicant acknowledgement email, decline email, and
-  the "would you like to mentor again?" re-enrollment email — drafts in
+  the "would you like to mentor again?" re-enrollment email - drafts in
   Phase 3, committee sign-off before Phase 7.
 - The list of consumer email domains for the cross-institution filter's
   allow-list (§6.7) may need expansion based on applicant demographics;
@@ -989,21 +989,21 @@ Still pending (nothing blocking; resolve during the relevant phase):
 
 ## 17. Glossary
 
-- **Applicant** — any individual who submits the form, regardless of role.
-- **Mentor / Mentee** — applicants in each role.
-- **Pool** — the set of `accepted` applicants currently eligible to be
+- **Applicant** - any individual who submits the form, regardless of role.
+- **Mentor / Mentee** - applicants in each role.
+- **Pool** - the set of `accepted` applicants currently eligible to be
   matched.
-- **Cycle** — a named period (e.g., "Spring 2026"); rolling admission is
+- **Cycle** - a named period (e.g., "Spring 2026"); rolling admission is
   possible within it.
-- **Match** — a record representing a potential or actual pairing of one
+- **Match** - a record representing a potential or actual pairing of one
   mentor and one mentee.
-- **Mutual interest** — both sides of a proposed match have selected each
+- **Mutual interest** - both sides of a proposed match have selected each
   other.
-- **Compact** — the Mentorship Program Compact PDF, signed by both parties
+- **Compact** - the Mentorship Program Compact PDF, signed by both parties
   before the relationship is official.
-- **Toolkit** — role-specific PDF delivered on compact signing.
-- **Blinded** — view where names and identifying details are redacted.
-- **Unblinded** — full profile visible to the counterpart after mutual
+- **Toolkit** - role-specific PDF delivered on compact signing.
+- **Blinded** - view where names and identifying details are redacted.
+- **Unblinded** - full profile visible to the counterpart after mutual
   interest + admin approval + compact signing.
 
 ---

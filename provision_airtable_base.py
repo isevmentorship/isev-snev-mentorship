@@ -79,10 +79,10 @@ FOCUS_AREAS = [
 ]
 
 TIME_ZONES = [
-    ("America/Los_Angeles", "Pacific — US/Canada West",        -8),
-    ("America/Denver",      "Mountain — US/Canada",            -7),
-    ("America/Chicago",     "Central — US/Canada/Mexico",      -6),
-    ("America/New_York",    "Eastern — US/Canada",             -5),
+    ("America/Los_Angeles", "Pacific - US/Canada West",        -8),
+    ("America/Denver",      "Mountain - US/Canada",            -7),
+    ("America/Chicago",     "Central - US/Canada/Mexico",      -6),
+    ("America/New_York",    "Eastern - US/Canada",             -5),
     ("America/Mexico_City", "Mexico City",                     -6),
     ("America/Bogota",      "Bogotá / Lima",                   -5),
     ("America/Sao_Paulo",   "São Paulo / Brasília",            -3),

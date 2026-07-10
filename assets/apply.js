@@ -6,9 +6,11 @@
      primary only for mentors)
    - Enforces cross-tier deduplication: a topic can appear in primary OR
      secondary, not both
-   - Serializes multi-selects and ranked topics into a clean JSON payload
-   - Posts to a configured form-handling endpoint (AJAX); falls back to a
-     standard form POST if fetch() fails or the endpoint isn't JSON-capable
+   - Serializes multi-selects and ranked topics into flat, Sheet-friendly fields
+   - Posts form-encoded via fetch (a CORS "simple request", which Google Apps
+     Script accepts without a preflight) and shows the in-page confirmation;
+     falls back to a standard form POST only if fetch() itself fails, in which
+     case the Apps Script returns a styled confirmation page
    ============================================ */
 
 (function () {
@@ -368,6 +370,26 @@
     return payload;
   }
 
+  // Flatten every value to a string so the payload survives a form-encoded
+  // POST: ranked arrays become JSON strings (the Sheet's *_ranked columns),
+  // multi-selects become "; "-joined lists.
+  function flattenPayload() {
+    const payload = buildPayload();
+    const flat = {};
+    Object.keys(payload).forEach((key) => {
+      const value = payload[key];
+      if (key === "career_topics_primary_ranked" ||
+          key === "career_topics_secondary_ranked") {
+        flat[key] = JSON.stringify(value);
+      } else if (Array.isArray(value)) {
+        flat[key] = value.join("; ");
+      } else {
+        flat[key] = value == null ? "" : String(value);
+      }
+    });
+    return flat;
+  }
+
   // ----- Submission -----
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -411,33 +433,51 @@
       return;
     }
 
+    const flat = flattenPayload();
+
     try {
       statusEl.textContent = "Submitting…";
-      const payload = buildPayload();
 
+      // No custom headers: URLSearchParams posts as
+      // application/x-www-form-urlencoded, a CORS "simple request" that Apps
+      // Script accepts without a preflight and answers with readable JSON.
       const res = await fetch(action, {
         method: "POST",
-        headers: { "Accept": "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: new URLSearchParams(flat)
       });
 
-      if (res.ok) {
+      let data = null;
+      try { data = await res.json(); } catch (_) { /* non-JSON response */ }
+
+      if (res.ok && (!data || data.ok !== false)) {
         showSuccess();
       } else {
-        let msg = "Submission failed. Please try again in a moment.";
-        try {
-          const data = await res.json();
-          if (data && data.errors && data.errors.length) {
-            msg = data.errors.map((e) => e.message || e).join("; ");
-          } else if (data && data.error) {
-            msg = data.error;
-          }
-        } catch (_) { /* ignore */ }
         statusEl.classList.add("error");
-        statusEl.textContent = msg;
+        statusEl.textContent = (data && data.error)
+          ? "Submission failed: " + data.error
+          : "Submission failed. Please try again in a moment.";
       }
     } catch (err) {
+      // Network-level failure: fall back to a plain form POST. Inject the
+      // computed fields as hidden inputs so the backend still receives them,
+      // and flag the post so the server responds with a confirmation page.
       statusEl.textContent = "Retrying…";
+      [
+        "career_topics_primary_ranked",
+        "career_topics_secondary_ranked",
+        "career_topics_primary_text",
+        "career_topics_secondary_text",
+        "_native"
+      ].forEach((name) => {
+        let input = form.querySelector('input[type="hidden"][name="' + name + '"]');
+        if (!input) {
+          input = document.createElement("input");
+          input.type = "hidden";
+          input.name = name;
+          form.appendChild(input);
+        }
+        input.value = name === "_native" ? "1" : flat[name];
+      });
       form.removeAttribute("novalidate");
       form.submit();
     }

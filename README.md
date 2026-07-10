@@ -1,9 +1,8 @@
 # ISEV-SNEV Mentorship Program - Landing Site
 
-A static landing page, a built-in application form, and a clickable prototype of
-the matchmaker flow for the joint **ISEV × SNEV Mentorship Program**. Designed to
-be dropped into a new GitHub repository and published with GitHub Pages - no
-servers, no build step.
+A static landing page and application form for the joint **ISEV × SNEV
+Mentorship Program**. Designed to be dropped into a new GitHub repository and
+published with GitHub Pages - no servers, no build step.
 
 ## What's in this folder
 
@@ -11,11 +10,9 @@ servers, no build step.
 isev-snev-mentorship/
 ├── index.html            # Landing page (about, how it works, eligibility, FAQ, apply CTA)
 ├── apply.html            # Application form (mentor/mentee in one page)
-├── prototype.html        # 5-step clickable demo of the matching flow (sample data only)
 ├── assets/
 │   ├── styles.css        # Shared stylesheet (clean academic default)
-│   ├── apply.js          # Form logic: role toggle, validation, AJAX submit
-│   └── app.js            # Prototype logic (no backend, no storage)
+│   └── apply.js          # Form logic: role toggle, topic pickers, validation, AJAX submit
 ├── .nojekyll             # Tells GitHub Pages to skip Jekyll processing
 └── README.md             # This file
 ```
@@ -32,9 +29,9 @@ to whichever service you wire up below.
 4. Wait ~60 seconds, then visit `https://<your-username>.github.io/isev-snev-mentorship/`.
 5. Wire up the application form - see the next section.
 
-At this point the landing page and the prototype already work. The application
-form will *show* the correct error and refuse to submit until you configure a
-form-handling endpoint.
+At this point the landing page already works. The application form will *show*
+the correct error and refuse to submit until you configure a form-handling
+endpoint.
 
 ---
 
@@ -93,44 +90,13 @@ Submissions land as **both** a row in a Google Sheet and an email to the committ
 
 1. Open [sheets.google.com](https://sheets.google.com) and create a new Sheet
    called, e.g., "ISEV-SNEV Mentorship Applications."
-2. In the first row, add column headers matching the field names in `apply.html`:
-   ```
-   timestamp  role  full_name  email  affiliation  country  timezone  languages
-   career_stage  membership  research_focus  keywords  mentee_goals
-   mentee_success  mentee_mentor_stage  mentee_timezone_flex  mentor_expertise
-   mentor_experience  mentor_slots  mentor_style  frequency
-   availability_window  accessibility  consent_review  consent_contact
-   consent_unblind
-   ```
-   (Order doesn't matter - the script matches by name.)
+2. In the first row, add column headers matching the field names in `apply.html`
+   (the exact header row, and the script to paste, live in **SETUP.md Part 3** -
+   that file is the single source of truth for the backend code).
 3. From the Sheet, go to **Extensions → Apps Script**. Delete the default code
-   and paste:
-   ```js
-   const COMMITTEE_EMAIL = 'isevmentorship@gmail.com';
-
-   function doPost(e) {
-     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-     const data = e.postData && e.postData.type === 'application/json'
-       ? JSON.parse(e.postData.contents)
-       : (e.parameter || {});
-     data.timestamp = new Date().toISOString();
-     const row = headers.map(h => Array.isArray(data[h]) ? data[h].join('; ') : (data[h] || ''));
-     sheet.appendRow(row);
-
-     // Send the committee an email copy
-     const body = headers.map(h => `${h}: ${Array.isArray(data[h]) ? data[h].join(', ') : (data[h] || '')}`).join('\n');
-     MailApp.sendEmail({
-       to: COMMITTEE_EMAIL,
-       subject: `Mentorship application (${data.role || 'unknown'}): ${data.full_name || ''}`,
-       body: body
-     });
-
-     return ContentService
-       .createTextOutput(JSON.stringify({ ok: true }))
-       .setMimeType(ContentService.MimeType.JSON);
-   }
-   ```
+   and paste the script from **SETUP.md Part 3b**. It appends each submission
+   to the Sheet, emails the committee a copy, and sends the applicant a
+   confirmation email with their answers.
 4. Click **Deploy → New deployment → Web app**.
    - *Execute as:* Me
    - *Who has access:* Anyone
@@ -195,8 +161,8 @@ If the program gets its own subdomain (e.g., `mentorship.isev.org`):
 
 ## Preview locally
 
-Because the prototype loads `assets/app.js` and `assets/apply.js` via relative
-paths, some browsers block local-file JS. Easiest fix is a tiny local server:
+Because the pages load `assets/apply.js` via relative paths, some browsers
+block local-file JS. Easiest fix is a tiny local server:
 
 ```bash
 cd isev-snev-mentorship
@@ -215,25 +181,10 @@ python3 -m http.server 8000
 | `index.html` | Replace the brand monogram (`IS`) with an official logo if/when licensed |
 | `index.html` | Update the SNEV link in the footer and the `mailto:` for the committee |
 | `index.html` | Update the matching-cycle label (e.g., "Spring 2026") |
-| `prototype.html` | The sample applicant profile in Step 2 is hardcoded - edit to taste |
-| `assets/app.js` | `MENTOR_CANDIDATES` and `MENTEE_CANDIDATES` hold the fake demo candidates |
 
----
-
-## What the prototype demonstrates (and what it doesn't)
-
-The prototype is a **front-end-only walkthrough** so mentors, mentees, and the
-committee can see the intended user experience before any real system is built.
-It supports role selection, an "application accepted" confirmation screen, 1-3
-blinded candidate profiles with fit scores and tags, selecting and submitting
-picks, and a simulated "mutual match" unblinding screen.
-
-It does **not** include: real authentication, application submission, admin
-review tooling, messaging, or persistence - that's what the application form +
-Sheet/Formspree inbox is for in this early phase. When you're ready to replace
-the prototype with a real matching system, the visual components in
-`prototype.html` are structured to be re-used on top of a small backend
-(Supabase, Firebase, or a Node/Python service).
+> The clickable matchmaker prototype (`prototype.html` + `assets/app.js`) was
+> removed when the site went live. It remains available in git history if you
+> ever want to resurrect it for demos.
 
 ## License / credits
 

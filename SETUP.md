@@ -26,8 +26,8 @@ Before you start, have three tabs open:
    Drag everything onto the GitHub upload area.
 7. Scroll down, add a commit message like "initial site", click **Commit changes**.
 
-✅ Your repo should now show `index.html`, `apply.html`, `prototype.html`,
-`README.md`, `.nojekyll`, `SETUP.md`, and an `assets/` folder.
+✅ Your repo should now show `index.html`, `apply.html`, `README.md`,
+`.nojekyll`, `SETUP.md`, and an `assets/` folder.
 
 > If `.nojekyll` is missing, click **Add file → Create new file**, name it
 > `.nojekyll` (exactly, with the leading dot), leave it empty, and commit.
@@ -43,8 +43,8 @@ Before you start, have three tabs open:
 5. Wait ~60 seconds and refresh. A green banner appears at the top with your
    live URL, e.g. `https://<your-username>.github.io/isev-snev-mentorship/`.
 
-✅ Open that URL. The landing page and the prototype both work. The Apply form
-loads but will refuse to submit - that's expected until Part 4.
+✅ Open that URL. The landing page works. The Apply form loads but will refuse
+to submit - that's expected until Part 4.
 
 ---
 
@@ -77,35 +77,133 @@ timestamp	role	full_name	email	affiliation	country	timezone	languages	career_sta
 ### 3b. Add the Apps Script
 
 1. From the Sheet: **Extensions → Apps Script**. A new tab opens.
-2. Delete the default code. Paste this, changing the email on the first line:
+2. Delete the default code. Paste this, changing the two constants at the top
+   if needed:
 
 ```javascript
 const COMMITTEE_EMAIL = 'isevmentorship@gmail.com';
+const SITE_URL = 'https://isevmentorship.github.io/isev-snev-mentorship/';
+const PROGRAM_NAME = 'ISEV-SNEV Mentorship Program';
 
 function doPost(e) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const data = e.postData && e.postData.type === 'application/json'
-    ? JSON.parse(e.postData.contents)
-    : (e.parameter || {});
-  data.timestamp = new Date().toISOString();
-  const row = headers.map(h => Array.isArray(data[h]) ? data[h].join('; ') : (data[h] || ''));
-  sheet.appendRow(row);
+  // Serialize concurrent submissions so two applicants can't write the same
+  // Sheet row at the same moment.
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
 
-  const body = headers.map(h => `${h}: ${Array.isArray(data[h]) ? data[h].join(', ') : (data[h] || '')}`).join('\n');
-  MailApp.sendEmail({
-    to: COMMITTEE_EMAIL,
-    subject: `Mentorship application (${data.role || 'unknown'}): ${data.full_name || ''}`,
-    body: body
-  });
+    let data = {};
+    if (e.postData && e.postData.type === 'application/json') {
+      data = JSON.parse(e.postData.contents);
+    } else {
+      // Form-encoded post: e.parameters holds every value as an array,
+      // which also captures repeated keys from multi-selects.
+      Object.keys(e.parameters || {}).forEach(function (k) {
+        const v = e.parameters[k];
+        data[k] = v.length > 1 ? v.join('; ') : v[0];
+      });
+    }
 
+    // Honeypot: bots fill the invisible _gotcha field. Pretend success,
+    // store nothing, email no one.
+    if (data._gotcha) {
+      return jsonReply_({ ok: true });
+    }
+
+    data.timestamp = new Date().toISOString();
+
+    const row = headers.map(function (h) {
+      const v = data[h];
+      if (v === undefined || v === null) return '';
+      return Array.isArray(v) ? v.join('; ') : v;
+    });
+    sheet.appendRow(row);
+
+    const summary = headers
+      .filter(function (h) { return String(data[h] === undefined ? '' : data[h]) !== ''; })
+      .map(function (h) {
+        return h + ': ' + (Array.isArray(data[h]) ? data[h].join(', ') : data[h]);
+      })
+      .join('\n');
+
+    // 1) Copy to the committee. Reply-to is the applicant, so the committee
+    //    can respond with one click.
+    MailApp.sendEmail({
+      to: COMMITTEE_EMAIL,
+      subject: 'Mentorship application (' + (data.role || 'unknown') + '): ' + (data.full_name || ''),
+      body: summary,
+      replyTo: String(data.email || COMMITTEE_EMAIL)
+    });
+
+    // 2) Confirmation to the applicant, with a copy of their answers.
+    if (data.email) {
+      MailApp.sendEmail({
+        to: String(data.email),
+        subject: PROGRAM_NAME + ' - application received',
+        body:
+          'Hi ' + (data.full_name || 'there') + ',\n\n' +
+          'Thanks for applying to the ' + PROGRAM_NAME + ' as a ' +
+          (data.role || 'participant') + '. The matching committee will review ' +
+          'your application; you should hear back within two weeks.\n\n' +
+          'For your records, here is a copy of your answers:\n\n' +
+          summary + '\n\n' +
+          'If anything looks wrong, just reply to this email.\n\n' +
+          '- The ISEV-SNEV Mentorship Committee\n' + SITE_URL,
+        replyTo: COMMITTEE_EMAIL
+      });
+    }
+
+    // AJAX submissions (the normal path) get JSON back and the site shows its
+    // own in-page confirmation. A plain form post (the no-JS/offline fallback
+    // sets _native=1) gets a real confirmation page instead of raw JSON.
+    if (data._native === '1') {
+      return HtmlService.createHtmlOutput(confirmationPage_(data));
+    }
+    return jsonReply_({ ok: true });
+  } catch (err) {
+    return jsonReply_({ ok: false, error: String(err) });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function jsonReply_(obj) {
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true }))
+    .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function confirmationPage_(data) {
+  const name = data.full_name ? ', ' + escapeHtml_(String(data.full_name)) : '';
+  return '<!doctype html><html><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>Application received</title></head>' +
+    '<body style="font-family:Georgia,serif;background:#f7f9fb;margin:0;padding:3rem 1rem;">' +
+    '<div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #dde5ec;' +
+    'border-radius:10px;padding:2rem;">' +
+    '<h1 style="color:#0f2a44;margin-top:0;">Application received.</h1>' +
+    '<p>Thanks' + name + ' - your application is in. A confirmation with a copy ' +
+    'of your answers is on its way to your email, and the committee will be in ' +
+    'touch within two weeks.</p>' +
+    '<p><a href="' + SITE_URL + '" style="color:#0f2a44;">Back to the program site</a></p>' +
+    '</div></body></html>';
+}
+
+function escapeHtml_(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 ```
 
 3. Click the floppy-disk **Save** icon. Name the project "Mentorship form" if prompted.
+
+> **Already deployed once and just updating the code?** Paste the new code,
+> save, then go to **Deploy → Manage deployments → ✏️ (edit) → Version: New
+> version → Deploy**. This keeps the same web-app URL, so nothing in
+> `apply.html` needs to change. (Creating a *New deployment* instead would
+> mint a different URL and silently orphan the form.)
 
 ### 3c. Deploy as a web app
 
@@ -152,11 +250,14 @@ GitHub Pages redeploys automatically in ~30 seconds.
 ## Part 5 - Test it (2 min)
 
 1. Open your live Apply page.
-2. Fill in the form as a fake applicant and submit.
+2. Fill in the form as a fake applicant (use an email you can check) and submit.
 3. Check:
-   - The Google Sheet gains a new row with all the answers.
-   - The committee email address you set in line 1 of the Apps Script receives
-     an email.
+   - The page shows the in-page "Application received." confirmation (no
+     redirect to a raw JSON page).
+   - The Google Sheet gains a new row with all the answers, including the
+     `career_topics_*` columns.
+   - The committee address receives a copy, and the applicant email receives
+     a confirmation with all the answers.
 
 If either doesn't arrive, the cause is almost always one of these three:
 

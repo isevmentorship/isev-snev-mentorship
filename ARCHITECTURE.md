@@ -444,9 +444,18 @@ perfect 1.00.
 **Scoring procedure.** For each mentee topic `t` ranked at position `r_m` (in
 either tier), check whether the mentor offered `t` at some rank `r_o`:
 
-- If yes, contribution = `weight(r_m) × weight(r_o) × tier_multiplier(t)`
-  normalized to the scale below.
+- If yes, contribution = `sqrt(weight(r_m) × weight(r_o)) × tier_multiplier(t)`
+  - the geometric mean of the two rank weights.
 - If no, contribution = 0.
+
+> **Correction (2026-07-10, first implementation).** An earlier draft used the
+> raw product `weight(r_m) × weight(r_o)`. That caps a perfect five-for-five
+> same-rank overlap at 0.226 instead of the intended 1.00, and combined with
+> §6.4 it would leave every achievable match below the §4.7 50% hold threshold.
+> The geometric mean keeps the position-weighting behaviour while restoring
+> the 0-1 scale: identical ranks contribute exactly `weight(r)`, so a full
+> five-for-five same-rank match sums to 1.00. The reference implementation is
+> `apps_script/matching_engine.gs`.
 
 `tier_multiplier(t)` is `1.0` when `t` is in the mentee's primary tier and
 equals `secondary_topic_weight` (default 0.30, see §4.7) when it's in the
@@ -456,16 +465,18 @@ To keep the result on a 0.00-1.00 scale we compute two tier-specific overlap
 sums and combine them:
 
 ```
-primary_overlap   = Σ weight(r_mentee) × weight(r_mentor)  for t in mentee.primary  ∩ mentor.offered
-secondary_overlap = Σ weight(r_mentee) × weight(r_mentor)  for t in mentee.secondary ∩ mentor.offered
+primary_overlap   = Σ sqrt(weight(r_mentee) × weight(r_mentor))  for t in mentee.primary  ∩ mentor.offered
+secondary_overlap = Σ sqrt(weight(r_mentee) × weight(r_mentor))  for t in mentee.secondary ∩ mentor.offered
 score_topic_overlap = min(1.0,
     primary_overlap
   + secondary_topic_weight × secondary_overlap)
 ```
 
 A mentee whose top-two primary picks are both ranked #1 and #2 by a mentor
-scores ~0.15 on primary alone (0.35×0.35 + 0.25×0.25); five-for-five at
-identical rank hits 1.00. Secondary contributions are scaled down by
+scores 0.60 on primary alone (sqrt(0.35×0.35) + sqrt(0.25×0.25) = 0.35 + 0.25);
+five-for-five at identical rank hits 1.00, and rank disagreement is penalized
+(mentee rank 1 offered at mentor rank 5 contributes sqrt(0.35×0.08) ≈ 0.17
+rather than 0.35). Secondary contributions are scaled down by
 `secondary_topic_weight` so a mentee's secondary interests can break ties and
 round out matches but cannot outweigh their stated primary priorities.
 

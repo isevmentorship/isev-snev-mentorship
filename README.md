@@ -13,9 +13,20 @@ isev-snev-mentorship/
 ├── assets/
 │   ├── styles.css        # Shared stylesheet (clean academic default)
 │   └── apply.js          # Form logic: role toggle, topic pickers, validation, AJAX submit
+├── apps_script/
+│   └── matching_engine.gs # Sheets matching engine + weekly Drive backup (paste into Apps Script)
+├── SETUP.md              # Site + form-handler (doPost) setup
+├── MATCHING_SETUP.md     # Matching engine + backup setup
+├── ARCHITECTURE.md       # Full system design (matching algorithm, data model, roadmap)
 ├── .nojekyll             # Tells GitHub Pages to skip Jekyll processing
 └── README.md             # This file
 ```
+
+The site is static, but two pieces of Google Apps Script (both pasted into the
+Sheet's one script project, nothing to host) make it functional:
+**the form handler** (`doPost`, in SETUP.md) records submissions and emails
+confirmations, and **the matching engine** (`apps_script/matching_engine.gs`,
+in MATCHING_SETUP.md) scores the pool nightly and proposes matches.
 
 Everything runs client-side. The only outbound network call is the form submit
 to whichever service you wire up below.

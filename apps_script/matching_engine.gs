@@ -126,12 +126,22 @@ function setupMentorshipSystem() {
   ScriptApp.newTrigger('weeklySnapshot').timeBased()
     .onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(4).create();
 
-  SpreadsheetApp.getUi().alert(
+  notify_(
     'Mentorship system ready.\n\n' +
     '- Mark applicants "accepted" in the new status column to admit them to the pool.\n' +
     '- Matching runs nightly at ~2am and writes to "Proposed Matches".\n' +
     '- Backups run Mondays ~4am into the Drive folder "' + BACKUP_FOLDER + '".\n' +
     '- Use the Mentorship menu to run either on demand.');
+}
+
+// Show a message without ever blocking: when run from the script editor
+// there is no dialog UI to click, and a blocking alert() looks like a hang.
+// toast() is non-blocking; Logger covers headless runs (triggers/editor).
+function notify_(message) {
+  Logger.log(message);
+  try {
+    SpreadsheetApp.getActiveSpreadsheet().toast(message, 'Mentorship', 10);
+  } catch (e) { /* no UI available (e.g. time-driven trigger) - log only */ }
 }
 
 function onOpen() {
@@ -146,16 +156,15 @@ function onOpen() {
 
 function generateMatchesFromMenu() {
   const result = generateMatches();
-  SpreadsheetApp.getUi().alert(
-    'Matching complete.\n\nProposals written: ' + result.written +
-    '\nHeld below threshold: ' + result.held +
-    '\nAccepted mentees in pool: ' + result.mentees +
-    '\nAccepted mentors in pool: ' + result.mentors);
+  notify_(
+    'Matching complete. Proposals written: ' + result.written +
+    ' (held below threshold: ' + result.held +
+    '). Pool: ' + result.mentees + ' mentee(s), ' + result.mentors + ' mentor(s).');
 }
 
 function sendDigestFromMenu() {
   sendCommitteeDigest(generateMatches());
-  SpreadsheetApp.getUi().alert('Digest sent to ' + DIGEST_EMAIL + '.');
+  notify_('Digest sent to ' + DIGEST_EMAIL + '.');
 }
 
 function nightlyMatchRun() {

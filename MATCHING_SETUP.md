@@ -82,6 +82,36 @@ That's it. The engine is live and will run nightly.
 4. **Retire a pair.** Set a proposal's status to `declined` to stop it from
    being re-proposed on the next run.
 
+### Sending blinded profiles (the applicant-facing step)
+
+When a mentee (or mentor) should see their candidates:
+
+1. In the **Proposed Matches** tab, click any row belonging to that person.
+2. **Mentorship -> Send blinded profiles to MENTEE of selected row** (or the
+   MENTOR variant).
+3. The engine snapshots all of that person's `proposed` rows into an
+   anonymized candidate set, mints a personal secret link, and emails it to
+   them. The link opens **matches.html on the site** - blinded cards showing
+   fit %, career stage, ranked topics, focus areas, languages, and time-zone
+   gap. No names, affiliations, emails, or free text.
+4. The applicant selects up to 3 candidates and submits. Their picks are
+   written to the **Profile Links** tab (with viewed/responded timestamps)
+   and the committee gets an email mapping each anonymous code back to the
+   real pair, with a link to the Sheet.
+5. When both sides of a pair have picked each other, set that row's status
+   to `mutual-interest` and proceed as usual.
+
+Re-sending to the same person refreshes their candidate set but keeps the
+same link. Privacy note: the link is a capability URL - anyone holding it can
+see that person's *anonymized* candidate set, which is why the payload never
+includes identifying fields. Applicants are told not to forward it.
+
+**Deployment requirement:** this feature adds a `doGet` function, which is
+served through the web-app deployment. After pasting the updated
+`matching_engine.gs`, you must also redeploy in place: **Deploy -> Manage
+deployments -> edit (pencil) -> Version: New version -> Deploy**. Same URL,
+new code. Until you do, matches.html links will show "This link isn't valid."
+
 ### Overrides you control from the Sheet
 
 - **`Settings` tab** - every tunable number from ARCHITECTURE.md §4.7:

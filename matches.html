@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Your blinded matches · ISEV-SNEV Mentorship Program</title>
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='30' fill='%230f2a44'/><text x='50%25' y='55%25' text-anchor='middle' font-family='Georgia' font-size='22' fill='white' font-weight='700'>IS</text></svg>" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <span class="brand-mark">IS</span>
+        <span>ISEV &times; SNEV <span style="color:var(--muted);font-weight:500">Mentorship</span></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="index.html">Program home</a>
+        <a href="index.html#faq">FAQ</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section style="padding:2.5rem 0 3rem;">
+      <div class="container" style="max-width:960px;">
+
+        <!-- Loading -->
+        <section id="screen-loading" class="panel">
+          <h2>Loading your matches…</h2>
+          <p style="color:var(--muted);">One moment while we fetch your blinded candidate profiles.</p>
+        </section>
+
+        <!-- Invalid or expired link -->
+        <section id="screen-invalid" class="panel" hidden>
+          <h2>This link isn't valid.</h2>
+          <p style="color:var(--muted);max-width:640px;">
+            We couldn't find a candidate set for this link. It may have been
+            copied incompletely from the email, or it may have been replaced by
+            a newer one. Check the most recent email from the committee, or
+            <a href="mailto:isevmentorship@gmail.com">contact us</a> and we'll
+            send a fresh link.
+          </p>
+        </section>
+
+        <!-- Matches -->
+        <section id="screen-matches" class="panel" hidden>
+          <h4>Your blinded matches</h4>
+          <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <h2 style="margin:0;" id="matchesTitle">Here are your candidates.</h2>
+            <span class="status-pill" id="countPill"></span>
+          </div>
+          <p style="color:var(--muted);max-width:640px;margin-top:0.6rem;">
+            Names, affiliations, and photos are hidden - what you see is each
+            candidate's career stage, the topics they ranked, their EV focus
+            areas, and how well they align with your application. Select the
+            candidates you'd like to proceed with; identities are revealed only
+            after both sides opt in and the committee confirms the pairing.
+          </p>
+
+          <div class="match-grid" id="matchGrid"><!-- injected --></div>
+
+          <div class="nav-proto">
+            <button class="btn btn-primary" id="submitPicks" disabled>Submit my picks</button>
+            <span id="pickCount" class="status-pill gold">0 selected</span>
+          </div>
+          <p id="submitStatus" class="form-status" role="status" aria-live="polite"></p>
+        </section>
+
+        <!-- Submitted -->
+        <section id="screen-done" class="panel" hidden>
+          <h4>Selections submitted</h4>
+          <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <h2 style="margin:0;">Thank you - the committee has your picks.</h2>
+            <span class="status-pill green">Recorded</span>
+          </div>
+          <p style="color:var(--muted);max-width:640px;margin-top:0.6rem;">
+            We've notified the matching committee. If a candidate you selected
+            expresses interest in you as well, the committee will re-confirm the
+            pairing and introduce you by email - typically within 1-2 weeks.
+          </p>
+          <div class="card" style="margin-top:1rem;">
+            <h4 style="margin-bottom:0.6rem;">Your picks</h4>
+            <ul class="clean-list" id="pickList"></ul>
+          </div>
+          <p style="margin-top:1rem;">
+            <button class="btn btn-ghost" id="changePicks">Change my picks</button>
+          </p>
+        </section>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container" style="font-size:0.85rem;">
+      ISEV-SNEV Mentorship Program. <a href="index.html">Return to landing page</a>.
+    </div>
+  </footer>
+
+  <script>
+  (function () {
+    "use strict";
+    var API = "https://script.google.com/macros/s/AKfycbzLrjM3KC3dEEt1xVuS7yBQZjHc0oQUIkZneyJ93LFaHBYLQRYbq2RFOuUsjYweYJ0p/exec";
+    var MAX_PICKS = 3;
+
+    var token = new URLSearchParams(window.location.search).get("t") || "";
+    var picks = new Set();
+    var candidates = [];
+
+    function show(id) {
+      ["screen-loading", "screen-invalid", "screen-matches", "screen-done"]
+        .forEach(function (s) {
+          document.getElementById(s).hidden = (s !== id);
+        });
+    }
+
+    function esc(s) {
+      var d = document.createElement("div");
+      d.textContent = s == null ? "" : String(s);
+      return d.innerHTML;
+    }
+
+    function renderCards(data) {
+      candidates = data.candidates || [];
+      var isMentee = data.role === "mentee";
+      document.getElementById("matchesTitle").textContent = data.name
+        ? (data.name + ", here are your candidate " + (isMentee ? "mentors." : "mentees."))
+        : ("Here are your candidate " + (isMentee ? "mentors." : "mentees."));
+      document.getElementById("countPill").textContent =
+        candidates.length + " candidate" + (candidates.length === 1 ? "" : "s");
+
+      var grid = document.getElementById("matchGrid");
+      grid.innerHTML = "";
+      candidates.forEach(function (c, i) {
+        var card = document.createElement("div");
+        card.className = "match-card";
+        card.dataset.code = c.code;
+        var rows = "";
+        if (c.stage) rows += "<dt>Career stage</dt><dd>" + esc(c.stage) + "</dd>";
+        if (c.experience) rows += "<dt>Mentoring experience</dt><dd>" + esc(c.experience) + "</dd>";
+        if (c.languages) rows += "<dt>Languages</dt><dd>" + esc(c.languages) + "</dd>";
+        rows += "<dt>Time zone</dt><dd>" + esc(c.tz) +
+          (c.delta != null ? ' <span style="color:var(--muted);">(' + esc(c.delta) + "h from you)</span>" : "") + "</dd>";
+        var topics = (c.topics || []).map(function (t, n) {
+          return '<span class="tag">' + (n + 1) + ". " + esc(t) + "</span>";
+        }).join("");
+        var focus = (c.focus || []).map(function (f) {
+          return '<span class="tag">' + esc(f) + "</span>";
+        }).join("");
+        card.innerHTML =
+          '<div class="score">' + esc(c.fit) + "% fit</div>" +
+          '<div class="avatar">' + (i + 1) + "</div>" +
+          '<div class="code">' + esc(c.code) + "</div>" +
+          '<h3 style="margin:0.4rem 0 0.3rem;">Anonymous candidate</h3>' +
+          "<dl>" + rows + "</dl>" +
+          (topics ? '<p style="margin:0.5rem 0 0.2rem;color:var(--muted);font-size:0.85rem;">Ranked career topics</p><div class="tags">' + topics + "</div>" : "") +
+          (focus ? '<p style="margin:0.5rem 0 0.2rem;color:var(--muted);font-size:0.85rem;">EV focus areas</p><div class="tags">' + focus + "</div>" : "") +
+          '<div class="actions">' +
+          '<button class="btn btn-primary pick-btn" data-code="' + esc(c.code) + '">Select</button>' +
+          '<span class="select-label" data-code-label="' + esc(c.code) + '"></span>' +
+          "</div>";
+        grid.appendChild(card);
+      });
+
+      Array.prototype.forEach.call(grid.querySelectorAll(".pick-btn"), function (btn) {
+        btn.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          togglePick(btn.dataset.code);
+        });
+      });
+      refreshPickUI();
+    }
+
+    function togglePick(code) {
+      if (picks.has(code)) picks.delete(code);
+      else if (picks.size < MAX_PICKS) picks.add(code);
+      refreshPickUI();
+    }
+
+    function refreshPickUI() {
+      Array.prototype.forEach.call(document.querySelectorAll(".match-card"), function (card) {
+        var code = card.dataset.code;
+        var selected = picks.has(code);
+        card.classList.toggle("selected", selected);
+        var btn = card.querySelector(".pick-btn");
+        if (btn) btn.textContent = selected ? "Selected ✓" : "Select";
+        var label = card.querySelector("[data-code-label]");
+        if (label) label.textContent = selected ? "Added to your picks" : "";
+      });
+      document.getElementById("pickCount").textContent = picks.size + " selected";
+      document.getElementById("submitPicks").disabled = picks.size === 0;
+    }
+
+    function renderDone(recorded) {
+      var list = document.getElementById("pickList");
+      list.innerHTML = "";
+      recorded.forEach(function (code) {
+        var c = candidates.find(function (x) { return x.code === code; }) || {};
+        var li = document.createElement("li");
+        li.innerHTML = "<strong>" + esc(code) + "</strong>" +
+          (c.fit ? " - " + esc(c.fit) + "% fit" : "") +
+          (c.tz ? ' <span style="color:var(--muted);">(' + esc(c.tz) + ")</span>" : "");
+        list.appendChild(li);
+      });
+      show("screen-done");
+    }
+
+    document.getElementById("submitPicks").addEventListener("click", function () {
+      var status = document.getElementById("submitStatus");
+      status.className = "form-status";
+      status.textContent = "Submitting…";
+      var url = API + "?action=interest&t=" + encodeURIComponent(token) +
+        "&picks=" + encodeURIComponent(Array.from(picks).join(","));
+      fetch(url)
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data && data.ok) {
+            status.textContent = "";
+            renderDone(data.recorded || Array.from(picks));
+          } else {
+            status.classList.add("error");
+            status.textContent = "Could not record your picks. Please try again, or reply to the committee email.";
+          }
+        })
+        .catch(function () {
+          status.classList.add("error");
+          status.textContent = "Network problem - please try again in a moment.";
+        });
+    });
+
+    document.getElementById("changePicks").addEventListener("click", function () {
+      show("screen-matches");
+    });
+
+    if (!token) { show("screen-invalid"); return; }
+    fetch(API + "?action=profiles&t=" + encodeURIComponent(token))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.ok) { show("screen-invalid"); return; }
+        renderCards(data);
+        // Returning visitor who already responded: preselect previous picks.
+        if (data.picks) {
+          String(data.picks).split(",").map(function (s) { return s.trim(); })
+            .filter(Boolean).forEach(function (code) {
+              if (picks.size < MAX_PICKS) picks.add(code);
+            });
+          refreshPickUI();
+        }
+        show("screen-matches");
+      })
+      .catch(function () { show("screen-invalid"); });
+  })();
+  </script>
+</body>
+</html>

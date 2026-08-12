@@ -34,9 +34,32 @@ const APPLICATIONS_SHEET_INDEX = 0; // applications must stay the first tab
 const MATCHES_SHEET = 'Proposed Matches';
 const SETTINGS_SHEET = 'Settings';
 const NEVER_MATCH_SHEET = 'Never Match';
+const PROFILE_LINKS_SHEET = 'Profile Links';
 const BACKUP_FOLDER = 'ISEV-SNEV Mentorship Backups';
 const BACKUPS_TO_KEEP = 26;
 const DIGEST_EMAIL = 'isevmentorship@gmail.com';
+// Named MENTORSHIP_* to avoid colliding with the form handler's consts
+// (duplicate top-level consts across files crash the whole project).
+const MENTORSHIP_SITE_URL = 'https://isevmentorship.github.io/isev-snev-mentorship/';
+const MENTORSHIP_PROGRAM = 'ISEV-SNEV Mentorship Program';
+
+// Topic id -> human label (must match apply.js / ARCHITECTURE §3.1).
+const TOPIC_LABELS = {
+  career_transition: 'Career transitions',
+  industry_advancement: 'Industry career advancement',
+  academic_career: 'Academic career development',
+  grant_writing: 'Grant and fellowship writing',
+  networking: 'Networking in the EV community',
+  job_search: 'Job search and interviewing',
+  communication: 'Scientific communication and presentation',
+  leadership: 'Leadership and management',
+  long_term_trajectory: 'Long-term career trajectory',
+  work_life: 'Work-life balance and sustainability',
+  dei: 'Diversity, equity and inclusion',
+  publishing: 'Publishing strategy',
+  mentoring_others: 'Mentoring others',
+  international_moves: 'International moves and relocation'
+};
 
 // §6.2 rank weight table (rank 1..5)
 const RANK_WEIGHTS = [0.35, 0.25, 0.20, 0.12, 0.08];
@@ -116,6 +139,15 @@ function setupMentorshipSystem() {
       .setValues([['email_a', 'email_b', 'reason']]).setFontWeight('bold');
   }
 
+  // 4b. Profile Links tab (blinded-profiles pages, §5.2)
+  let links = ss.getSheetByName(PROFILE_LINKS_SHEET);
+  if (!links) {
+    links = ss.insertSheet(PROFILE_LINKS_SHEET);
+    links.getRange(1, 1, 1, PROFILE_LINK_HEADERS.length)
+      .setValues([PROFILE_LINK_HEADERS]).setFontWeight('bold');
+    links.setFrozenRows(1);
+  }
+
   // 5. Triggers (idempotent: remove ours, re-add)
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (['nightlyMatchRun', 'weeklySnapshot'].indexOf(t.getHandlerFunction()) !== -1) {
@@ -147,6 +179,8 @@ function notify_(message) {
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Mentorship')
     .addItem('Generate matches now', 'generateMatchesFromMenu')
+    .addItem('Send blinded profiles to MENTEE of selected row', 'sendProfilesToMentee')
+    .addItem('Send blinded profiles to MENTOR of selected row', 'sendProfilesToMentor')
     .addItem('Send committee digest now', 'sendDigestFromMenu')
     .addItem('Snapshot backup now', 'weeklySnapshot')
     .addSeparator()
@@ -217,6 +251,9 @@ function readApplicants() {
       status: (get('status') || 'submitted').toLowerCase(),
       flex: get('mentee_timezone_flex'),
       slots: Number(get('mentor_slots')) || 1,
+      stage: get('career_stage'),
+      languages: get('languages'),
+      experience: get('mentor_experience'),
       focus: get('focus_areas').split(';').map(function (s) { return s.trim(); }).filter(String),
       primary: parseRanked(get('career_topics_primary_ranked')),
       secondary: parseRanked(get('career_topics_secondary_ranked'))
@@ -525,7 +562,7 @@ function sendCommitteeDigest(result) {
     mentorsIdle.forEach(function (s) { lines.push('  - ' + s); });
   }
   lines.push('');
-  lines.push('Review proposals in the "Proposed Matches" tab of the applications Sheet.');
+  lines.push('Review proposals here: ' + SpreadsheetApp.getActiveSpreadsheet().getUrl());
 
   // Skip the email only when there is truly nothing to say.
   if (!result.written && !submitted.length && !menteesWaiting.length && !mentorsIdle.length) return;
@@ -536,6 +573,237 @@ function sendCommitteeDigest(result) {
              submitted.length + ' awaiting review',
     body: lines.join('\n')
   });
+}
+
+/* ---------------- Blinded profile pages (§5.2) ----------------
+   Committee selects a row in "Proposed Matches" and uses the Mentorship
+   menu to send that applicant an email linking to
+   <MENTORSHIP_SITE_URL>matches.html?t=<secret token>. The page calls doGet() below,
+   which serves that person's anonymized candidate set as JSON and records
+   the picks they submit back. Names, affiliations, emails, and free text
+   never leave the server. */
+
+const PROFILE_LINK_HEADERS = [
+  'token', 'role', 'email', 'name', 'payload_json',
+  'created_at', 'sent_at', 'viewed_at', 'responded_at', 'picks'
+];
+
+function sendProfilesToMentee() { sendProfiles_('mentee'); }
+function sendProfilesToMentor() { sendProfiles_('mentor'); }
+
+function sendProfiles_(side) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getActiveSheet();
+  if (sheet.getName() !== MATCHES_SHEET) {
+    notify_('Select a row in the "' + MATCHES_SHEET + '" tab first, then rerun this menu item.');
+    return;
+  }
+  const rowIndex = sheet.getActiveRange().getRow();
+  if (rowIndex < 2 || rowIndex > sheet.getLastRow()) {
+    notify_('Select a data row (not the header) in "' + MATCHES_SHEET + '".');
+    return;
+  }
+  const emailCol = MATCH_HEADERS.indexOf(side === 'mentee' ? 'mentee_email' : 'mentor_email') + 1;
+  const targetEmail = String(sheet.getRange(rowIndex, emailCol).getValue()).trim().toLowerCase();
+  if (!targetEmail) { notify_('That row has no ' + side + ' email.'); return; }
+
+  const result = buildCandidatePayload_(side, targetEmail);
+  if (!result.candidates.length) {
+    notify_('No rows in status "proposed" for ' + targetEmail + ' - nothing to send.');
+    return;
+  }
+
+  const token = upsertProfileLink_(side, targetEmail, result.name, result.candidates);
+  const link = MENTORSHIP_SITE_URL + 'matches.html?t=' + token;
+  const counterpart = side === 'mentee' ? 'mentor' : 'mentee';
+
+  MailApp.sendEmail({
+    to: targetEmail,
+    subject: MENTORSHIP_PROGRAM + ' - your blinded ' + counterpart + ' candidates',
+    body:
+      'Hi ' + (result.name || 'there') + ',\n\n' +
+      'Good news - the matching committee has candidate ' + counterpart + 's for you. ' +
+      'Names and affiliations stay hidden until both sides agree to a pairing.\n\n' +
+      'View your candidates and make your picks here:\n' + link + '\n\n' +
+      'This link is personal to you - please don\'t forward it. If anything looks ' +
+      'off, just reply to this email.\n\n' +
+      '- The ISEV-SNEV Mentorship Committee',
+    replyTo: DIGEST_EMAIL
+  });
+  notify_('Sent ' + result.candidates.length + ' blinded profile(s) to ' + targetEmail + '.');
+}
+
+// Candidates for a mentee are its proposed mentors, and vice versa.
+function buildCandidatePayload_(side, targetEmail) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(MATCHES_SHEET);
+  const rows = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, MATCH_HEADERS.length).getValues()
+    : [];
+  const col = function (name) { return MATCH_HEADERS.indexOf(name); };
+
+  const applicants = readApplicants();
+  const byKey = {};
+  applicants.forEach(function (a) { byKey[a.email + '|' + a.role] = a; });
+  const me = byKey[targetEmail + '|' + side] || {};
+
+  const candidates = [];
+  rows.forEach(function (r) {
+    if (String(r[col('status')]).trim().toLowerCase() !== 'proposed') return;
+    const rowMentee = String(r[col('mentee_email')]).trim().toLowerCase();
+    const rowMentor = String(r[col('mentor_email')]).trim().toLowerCase();
+    if ((side === 'mentee' ? rowMentee : rowMentor) !== targetEmail) return;
+
+    const otherRole = side === 'mentee' ? 'mentor' : 'mentee';
+    const otherEmail = side === 'mentee' ? rowMentor : rowMentee;
+    const other = byKey[otherEmail + '|' + otherRole];
+    if (!other) return;
+
+    const prefix = otherRole === 'mentor' ? 'M-' : 'T-';
+    candidates.push({
+      code: prefix + shortHash_(String(r[col('pair_key')])),
+      pair_key: String(r[col('pair_key')]),        // server-side only; stripped before serving
+      fit: Number(r[col('score_total_pct')]) || 0,
+      stage: other.stage || '',
+      experience: otherRole === 'mentor' ? (other.experience || '') : '',
+      topics: (other.primary || []).slice().sort(function (a, b) { return a.rank - b.rank; })
+        .map(function (t) { return TOPIC_LABELS[t.topic] || t.topic; }),
+      focus: other.focus || [],
+      languages: other.languages || '',
+      tz: formatOffset_(other.timezone),
+      delta: r[col('offset_delta_hours')] === 'unknown' ? null : Number(r[col('offset_delta_hours')])
+    });
+  });
+  candidates.sort(function (a, b) { return b.fit - a.fit; });
+  return { candidates: candidates, name: me.name || '' };
+}
+
+function shortHash_(s) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, s);
+  let out = '';
+  for (let i = 0; i < 2; i++) {
+    out += ('0' + ((bytes[i] + 256) % 256).toString(16)).slice(-2);
+  }
+  return out.toUpperCase();
+}
+
+function formatOffset_(tz) {
+  const o = TZ_OFFSETS[tz];
+  if (o === undefined) return 'unspecified';
+  return 'UTC' + (o >= 0 ? '+' : '-') + Math.abs(o);
+}
+
+// One live link per (role, email): re-sending refreshes the payload but
+// keeps the same token, so earlier emails keep working.
+function upsertProfileLink_(role, email, name, candidates) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(PROFILE_LINKS_SHEET);
+  if (!sheet) throw new Error('Run Setup first: "' + PROFILE_LINKS_SHEET + '" tab is missing.');
+  const now = new Date().toISOString();
+  const payload = JSON.stringify(candidates);
+
+  if (sheet.getLastRow() > 1) {
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROFILE_LINK_HEADERS.length).getValues();
+    for (let i = 0; i < rows.length; i++) {
+      if (String(rows[i][1]) === role && String(rows[i][2]).toLowerCase() === email) {
+        sheet.getRange(i + 2, 5).setValue(payload);       // payload_json
+        sheet.getRange(i + 2, 7).setValue(now);           // sent_at
+        return String(rows[i][0]);
+      }
+    }
+  }
+  const token = Utilities.getUuid().replace(/-/g, '');
+  sheet.appendRow([token, role, email, name, payload, now, now, '', '', '']);
+  return token;
+}
+
+/* --------- doGet: JSON API for matches.html ---------
+   GET ?action=profiles&t=<token>          -> the candidate set (anonymized)
+   GET ?action=interest&t=<token>&picks=A,B -> record picks + notify committee
+   NOTE: adding doGet requires redeploying the web app IN PLACE
+   (Deploy -> Manage deployments -> edit -> New version). */
+
+// Also defined in the form-handler file; duplicate *function* declarations
+// are harmless in Apps Script (unlike duplicate consts), and defining it
+// here keeps the engine self-sufficient if the handler is older.
+function jsonReply_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  const p = (e && e.parameter) || {};
+  try {
+    if (p.action === 'profiles') return serveProfiles_(p);
+    if (p.action === 'interest') return recordInterest_(p);
+    return jsonReply_({ ok: true, service: MENTORSHIP_PROGRAM });
+  } catch (err) {
+    return jsonReply_({ ok: false, error: String(err) });
+  }
+}
+
+function findProfileLinkRow_(token) {
+  if (!token || String(token).length < 16) return null;
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PROFILE_LINKS_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROFILE_LINK_HEADERS.length).getValues();
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(token)) return { sheet: sheet, index: i + 2, values: rows[i] };
+  }
+  return null;
+}
+
+function serveProfiles_(p) {
+  const hit = findProfileLinkRow_(p.t);
+  if (!hit) return jsonReply_({ ok: false, error: 'invalid_link' });
+  hit.sheet.getRange(hit.index, 8).setValue(new Date().toISOString()); // viewed_at
+  const candidates = JSON.parse(hit.values[4] || '[]').map(function (c) {
+    return {
+      code: c.code, fit: c.fit, stage: c.stage, experience: c.experience,
+      topics: c.topics, focus: c.focus, languages: c.languages,
+      tz: c.tz, delta: c.delta
+    }; // pair_key deliberately omitted
+  });
+  return jsonReply_({
+    ok: true,
+    role: hit.values[1],
+    name: String(hit.values[3] || '').split(' ')[0],
+    candidates: candidates,
+    picks: String(hit.values[9] || '')
+  });
+}
+
+function recordInterest_(p) {
+  const hit = findProfileLinkRow_(p.t);
+  if (!hit) return jsonReply_({ ok: false, error: 'invalid_link' });
+  const payload = JSON.parse(hit.values[4] || '[]');
+  const valid = {};
+  payload.forEach(function (c) { valid[c.code] = c; });
+  const picks = String(p.picks || '').split(',')
+    .map(function (s) { return s.trim(); })
+    .filter(function (s) { return valid[s]; });
+  if (!picks.length) return jsonReply_({ ok: false, error: 'no_valid_picks' });
+
+  const now = new Date().toISOString();
+  hit.sheet.getRange(hit.index, 9).setValue(now);              // responded_at
+  hit.sheet.getRange(hit.index, 10).setValue(picks.join(', ')); // picks
+
+  const who = hit.values[3] + ' <' + hit.values[2] + '> (' + hit.values[1] + ')';
+  const lines = [who + ' submitted picks:', ''];
+  picks.forEach(function (code) {
+    lines.push('  ' + code + ' -> pair ' + valid[code].pair_key +
+               ' (' + valid[code].fit + '% fit)');
+  });
+  lines.push('');
+  lines.push('Mark reciprocal interest in the Sheet: ' +
+             SpreadsheetApp.getActiveSpreadsheet().getUrl());
+  MailApp.sendEmail({
+    to: DIGEST_EMAIL,
+    subject: MENTORSHIP_PROGRAM + ' - picks from ' + hit.values[2],
+    body: lines.join('\n')
+  });
+  return jsonReply_({ ok: true, recorded: picks });
 }
 
 /* ---------------- Weekly snapshot backup ---------------- */

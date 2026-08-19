@@ -72,8 +72,13 @@ const RANK_WEIGHTS = [0.35, 0.25, 0.20, 0.12, 0.08];
 
 // Match statuses the committee owns; regeneration never deletes these.
 const PRESERVED_MATCH_STATUSES = [
+  'sent',   // profiles are out with both parties - a 2-week round is running
   'mutual-interest', 'admin-approved', 'compact-sent', 'compact-signed',
   'active', 'completed', 'terminated-early', 'declined'
+];
+// Rows in the approval/compact funnel; people in one are never round-expired.
+const FUNNEL_STATUSES = [
+  'mutual-interest', 'admin-approved', 'compact-sent', 'compact-signed', 'active'
 ];
 // Statuses that consume a mentor slot (§3.4 mentor capacity rule).
 const SLOT_CONSUMING_STATUSES = [
@@ -101,11 +106,11 @@ const DEFAULT_SETTINGS = [
   ['allow_same_institution', 'FALSE', 'TRUE bypasses the same-institution filter (§6.7)'],
   ['consumer_email_domains', 'gmail.com, outlook.com, hotmail.com, yahoo.com, icloud.com, proton.me, protonmail.com', 'Domains ignored by the shared-domain heuristic'],
   ['match_threshold_percent', 50, 'Below this, pair is written as held-below-threshold (§7)'],
-  ['mentor_unfilled_escalation_days', 30, 'Digest flags mentors idle this long (§7)'],
-  ['unmatched_mentee_escalation_days', 30, 'Digest flags mentees waiting this long (§7)'],
   ['max_candidates_per_mentee', 3, 'Top-N candidates proposed per mentee (§6.5)'],
   ['reminder_after_days', 7, 'One reminder email after this many days without a response (profiles, compacts, surveys)'],
   ['stalled_after_days', 14, 'Digest flags a person as unresponsive after this many days'],
+  ['match_round_days', 14, 'A blinded-profiles round lasts this long; then no-mutual responders return to the pool and non-responders are flagged unresponsive'],
+  ['pool_wait_flag_days', 14, 'Digest flags accepted applicants who have waited in the pool this long with nothing sent'],
   ['checkin_after_days', 180, '6-month check-in survey goes out this many days after match_start'],
   ['closeout_after_days', 365, '12-month closeout survey goes out this many days after match_start']
 ];
@@ -115,9 +120,9 @@ const DEFAULT_SETTINGS = [
 function setupMentorshipSystem() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // 1. status + matched_with columns on Applications
+  // 1. status + matched_with + pool_entered_at columns on Applications
   const apps = ss.getSheets()[APPLICATIONS_SHEET_INDEX];
-  ['status', 'matched_with'].forEach(function (col) {
+  ['status', 'matched_with', 'pool_entered_at'].forEach(function (col) {
     const headers = apps.getRange(1, 1, 1, apps.getLastColumn()).getValues()[0];
     if (headers.indexOf(col) === -1) {
       apps.getRange(1, apps.getLastColumn() + 1).setValue(col);
@@ -216,18 +221,29 @@ function sendDigestFromMenu() {
 }
 
 // The daily pipeline, in deliberate order:
-//   1. retire matched people from the pool (so step 4 never re-proposes them)
+//   0. pool bookkeeping (stamp/clear pool_entered_at timers)
+//   1. retire matched people from the pool (so step 5 never re-proposes them)
 //   2. detect mutual interest from submitted picks
-//   3. lifecycle: compacts out for admin-approved pairs, activation + intro
+//   3. close expired 2-week rounds (responders return to the pool with an
+//      email; non-responders parked as 'unresponsive' for admin review)
+//   4. lifecycle: compacts out for admin-approved pairs, activation + intro
 //      email when both have signed, reminders, stall detection, surveys
-//   4. generate fresh matches on the reduced pool
-//   5. one digest email covering all of it
+//   5. generate fresh matches on the reduced pool
+//   6. auto-send blinded profiles to everyone with new proposals, starting
+//      their 2-week round and taking them out of the pool
+//   7. one digest email covering all of it
 function nightlyMatchRun() {
+  poolBookkeeping_();
   const retired = retireMatchedFromPool_();
   const mutual = detectMutualInterest_();
+  const rounds = resolveExpiredRounds_();
   const lifecycle = progressLifecycle_();
   const result = generateMatches();
-  sendCommitteeDigest(result, { retired: retired, mutual: mutual, lifecycle: lifecycle });
+  const roundsStarted = autoSendProfiles_();
+  sendCommitteeDigest(result, {
+    retired: retired, mutual: mutual, rounds: rounds,
+    lifecycle: lifecycle, roundsStarted: roundsStarted
+  });
 }
 
 /* ---------------- Data access ---------------- */
@@ -243,9 +259,9 @@ function getSettings() {
   }
   ['weight_topic_overlap', 'weight_focus_overlap', 'secondary_topic_weight',
    'locality_window_hours', 'match_threshold_percent',
-   'mentor_unfilled_escalation_days', 'unmatched_mentee_escalation_days',
    'max_candidates_per_mentee', 'reminder_after_days', 'stalled_after_days',
-   'checkin_after_days', 'closeout_after_days'
+   'checkin_after_days', 'closeout_after_days', 'match_round_days',
+   'pool_wait_flag_days'
   ].forEach(function (k) { out[k] = Number(out[k]); });
   out.allow_same_institution = String(out.allow_same_institution).toUpperCase() === 'TRUE';
   out.consumer_email_domains = String(out.consumer_email_domains)
@@ -276,6 +292,7 @@ function readApplicants() {
       affiliation: get('affiliation'),
       timezone: get('timezone'),
       status: (get('status') || 'submitted').toLowerCase(),
+      poolEnteredAt: get('pool_entered_at'),
       flex: get('mentee_timezone_flex'),
       slots: Number(get('mentor_slots')) || 1,
       stage: get('career_stage'),
@@ -303,16 +320,20 @@ function parseRanked(cell) {
   } catch (e) { return []; }
 }
 
+// Rows with two emails bar that specific pairing (§6.8). Rows with ONE email
+// (email_b left blank) ban that address from matching entirely.
 function readNeverMatch() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(NEVER_MATCH_SHEET);
-  const set = {};
+  const pairs = {}, banned = {};
   if (sheet && sheet.getLastRow() > 1) {
     sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues().forEach(function (r) {
       const a = String(r[0]).trim().toLowerCase(), b = String(r[1]).trim().toLowerCase();
-      if (a && b) { set[a + '|' + b] = true; set[b + '|' + a] = true; }
+      if (a && b) { pairs[a + '|' + b] = true; pairs[b + '|' + a] = true; }
+      else if (a) { banned[a] = true; }
+      else if (b) { banned[b] = true; }
     });
   }
-  return set;
+  return { pairs: pairs, banned: banned };
 }
 
 /* ---------------- Scoring (§6.2-6.4) ---------------- */
@@ -442,10 +463,10 @@ function generateMatches() {
     });
 
     const mentees = applicants.filter(function (a) {
-      return a.role === 'mentee' && a.status === 'accepted';
+      return a.role === 'mentee' && a.status === 'accepted' && !neverMatch.banned[a.email];
     });
     const mentors = applicants.filter(function (a) {
-      return a.role === 'mentor' && a.status === 'accepted' &&
+      return a.role === 'mentor' && a.status === 'accepted' && !neverMatch.banned[a.email] &&
         (a.slots - (slotUse[a.email] || 0)) > 0;
     });
 
@@ -465,7 +486,7 @@ function generateMatches() {
       const scored = [];
       mentors.forEach(function (mentor) {
         const pairKey = mentee.email + '|' + mentor.email;
-        if (retiredPairs[pairKey] || neverMatch[mentee.email + '|' + mentor.email]) return;
+        if (retiredPairs[pairKey] || neverMatch.pairs[mentee.email + '|' + mentor.email]) return;
         const delta = offsetDelta(mentee, mentor);
         if (delta !== null && delta > window) return;
         const conflict = institutionConflict(mentee, mentor, settings);
@@ -541,26 +562,18 @@ function sendCommitteeDigest(result, extra) {
   };
 
   const submitted = applicants.filter(function (a) { return a.status === 'submitted'; });
-  const menteesWaiting = [];
-  const mentorsIdle = [];
+  const unresponsiveParked = applicants.filter(function (a) { return a.status === 'unresponsive'; });
 
+  // People sitting in the pool 2+ weeks with nothing sent to them: candidates
+  // for a personal note or a manual below-threshold match. The timer resets
+  // whenever someone re-enters the pool (pool_entered_at is re-stamped).
+  const poolWaiting = [];
   applicants.forEach(function (a) {
     if (a.status !== 'accepted') return;
-    const d = days(a.timestamp);
-    const proposalsFor = result.proposals.filter(function (p) {
-      return p[1] === a.email || p[3] === a.email;
-    }).length;
-    const activeFor = result.preserved.filter(function (p) {
-      return (String(p[1]).toLowerCase() === a.email || String(p[3]).toLowerCase() === a.email) &&
-        SLOT_CONSUMING_STATUSES.indexOf(String(p[10]).trim().toLowerCase()) !== -1;
-    }).length;
-    if (a.role === 'mentee' && !activeFor && !proposalsFor &&
-        d !== null && d >= settings.unmatched_mentee_escalation_days) {
-      menteesWaiting.push(a.name + ' <' + a.email + '> - ' + d + ' days, no candidates');
-    }
-    if (a.role === 'mentor' && !activeFor && !proposalsFor &&
-        d !== null && d >= settings.mentor_unfilled_escalation_days) {
-      mentorsIdle.push(a.name + ' <' + a.email + '> - ' + d + ' days, unfilled slots');
+    const d = days(a.poolEnteredAt || a.timestamp);
+    if (d !== null && d >= settings.pool_wait_flag_days) {
+      poolWaiting.push(a.role + ' ' + a.name + ' <' + a.email + '> - ' + d +
+        ' days in pool with nothing sent');
     }
   });
 
@@ -579,15 +592,33 @@ function sendCommitteeDigest(result, extra) {
       lines.push('  - ' + a.role + ': ' + a.name + ' <' + a.email + '>');
     });
   }
-  if (menteesWaiting.length) {
+  if (poolWaiting.length) {
     lines.push('');
-    lines.push('MENTEES WAITING ' + settings.unmatched_mentee_escalation_days + '+ DAYS WITH NO CANDIDATES:');
-    menteesWaiting.forEach(function (s) { lines.push('  - ' + s); });
+    lines.push('*** IN POOL ' + settings.pool_wait_flag_days + '+ DAYS, NOTHING SENT - reach out with expected dates, or make a manual below-threshold match ***');
+    poolWaiting.forEach(function (s) { lines.push('  - ' + s); });
   }
-  if (mentorsIdle.length) {
+  if (unresponsiveParked.length) {
     lines.push('');
-    lines.push('MENTORS IDLE ' + settings.mentor_unfilled_escalation_days + '+ DAYS:');
-    mentorsIdle.forEach(function (s) { lines.push('  - ' + s); });
+    lines.push('UNRESPONSIVE - parked until an admin sets status back to accepted, or bans them (Never Match tab, single email = ban):');
+    unresponsiveParked.forEach(function (a) {
+      lines.push('  - ' + a.role + ' ' + a.name + ' <' + a.email + '>');
+    });
+  }
+  const rounds = extra.rounds || {};
+  if ((extra.roundsStarted || []).length) {
+    lines.push('');
+    lines.push('BLINDED PROFILES SENT (2-week round started, out of pool):');
+    extra.roundsStarted.forEach(function (s) { lines.push('  - ' + s); });
+  }
+  if ((rounds.returned || []).length) {
+    lines.push('');
+    lines.push('ROUND EXPIRED - responded, no mutual match, back in the pool (emailed):');
+    rounds.returned.forEach(function (s) { lines.push('  - ' + s); });
+  }
+  if ((rounds.unresponsive || []).length) {
+    lines.push('');
+    lines.push('ROUND EXPIRED - no response, newly parked as unresponsive:');
+    rounds.unresponsive.forEach(function (s) { lines.push('  - ' + s); });
   }
   // ---- Lifecycle sections (present when the full pipeline ran) ----
   const pairLabel = function (r) {
@@ -644,8 +675,11 @@ function sendCommitteeDigest(result, extra) {
     (life.activated || []).length || (life.reminders || []).length ||
     (life.stalled || []).length || (life.surveysSent || []).length ||
     (extra.retired || []).length;
-  if (!result.written && !submitted.length && !menteesWaiting.length &&
-      !mentorsIdle.length && !lifecycleNews) return;
+  const roundNews = (extra.roundsStarted || []).length ||
+    ((extra.rounds || {}).returned || []).length ||
+    ((extra.rounds || {}).unresponsive || []).length;
+  if (!result.written && !submitted.length && !poolWaiting.length &&
+      !unresponsiveParked.length && !lifecycleNews && !roundNews) return;
 
   sendMail_(DIGEST_EMAIL,
     'Mentorship digest: ' + result.written + ' new proposal(s), ' +
@@ -706,11 +740,18 @@ function sendProfiles_(side) {
   const targetEmail = String(sheet.getRange(rowIndex, emailCol).getValue()).trim().toLowerCase();
   if (!targetEmail) { notify_('That row has no ' + side + ' email.'); return; }
 
+  const sent = startRound_(side, targetEmail);
+  notify_(sent
+    ? 'Sent ' + sent + ' blinded profile(s) to ' + targetEmail + '; their 2-week round has started.'
+    : 'No rows in status "proposed" or "sent" for ' + targetEmail + ' - nothing to send.');
+}
+
+// Send (or re-send) someone's blinded profiles, freeze their proposal rows
+// as 'sent', and take them out of the pool ('reviewing-matches') for the
+// duration of the round. Returns the number of candidates sent, 0 if none.
+function startRound_(side, targetEmail) {
   const result = buildCandidatePayload_(side, targetEmail);
-  if (!result.candidates.length) {
-    notify_('No rows in status "proposed" for ' + targetEmail + ' - nothing to send.');
-    return;
-  }
+  if (!result.candidates.length) return 0;
 
   const token = upsertProfileLink_(side, targetEmail, result.name, result.candidates);
   const link = MENTORSHIP_SITE_URL + 'matches.html?t=' + token;
@@ -722,11 +763,24 @@ function sendProfiles_(side) {
     'Good news - the matching committee has candidate ' + counterpart + 's for you. ' +
     'Names and affiliations stay hidden until both sides agree to a pairing.\n\n' +
     'View your candidates and make your picks here:\n' + link + '\n\n' +
+    'Please respond within two weeks - after that, this round closes and the ' +
+    'candidates may be matched elsewhere.\n\n' +
     'This link is personal to you - please don\'t forward it. If anything looks ' +
     'off, just reply to this email.\n\n' +
     '- The ISEV-SNEV Mentorship Committee',
     DIGEST_EMAIL);
-  notify_('Sent ' + result.candidates.length + ' blinded profile(s) to ' + targetEmail + '.');
+
+  // Freeze this person's live proposal rows for the round.
+  const m = matchRows_();
+  const emailCol = mcol_(side === 'mentee' ? 'mentee_email' : 'mentor_email');
+  m.rows.forEach(function (r, i) {
+    if (String(r[emailCol]).trim().toLowerCase() !== targetEmail) return;
+    if (String(r[mcol_('status')]).trim().toLowerCase() === 'proposed') {
+      m.sheet.getRange(i + 2, mcol_('status') + 1).setValue('sent');
+    }
+  });
+  updateApplicant_(targetEmail, side, { status: 'reviewing-matches', pool_entered_at: '' });
+  return result.candidates.length;
 }
 
 // Candidates for a mentee are its proposed mentors, and vice versa.
@@ -745,7 +799,8 @@ function buildCandidatePayload_(side, targetEmail) {
 
   const candidates = [];
   rows.forEach(function (r) {
-    if (String(r[col('status')]).trim().toLowerCase() !== 'proposed') return;
+    const st = String(r[col('status')]).trim().toLowerCase();
+    if (st !== 'proposed' && st !== 'sent') return;
     const rowMentee = String(r[col('mentee_email')]).trim().toLowerCase();
     const rowMentor = String(r[col('mentor_email')]).trim().toLowerCase();
     if ((side === 'mentee' ? rowMentee : rowMentor) !== targetEmail) return;
@@ -960,7 +1015,8 @@ function retireMatchedFromPool_() {
     const target = full ? (allActive ? 'matched' : 'matched-pending')
                         : String(values[i][cStatus] || '').toLowerCase();
     const current = String(values[i][cStatus] || '').toLowerCase();
-    if (target !== current && ['accepted', 'matched-pending', 'matched'].indexOf(current) !== -1) {
+    if (target !== current &&
+        ['accepted', 'reviewing-matches', 'matched-pending', 'matched'].indexOf(current) !== -1) {
       apps.getRange(i + 1, cStatus + 1).setValue(target);
       changed.push(email + ': ' + current + ' -> ' + target);
     }
@@ -972,6 +1028,162 @@ function retireMatchedFromPool_() {
     }
   }
   return changed;
+}
+
+// Update one applicant's row (matched by email+role) on the applications
+// sheet. updates = { column_header: value }.
+function updateApplicant_(email, role, updates) {
+  const apps = SpreadsheetApp.getActiveSpreadsheet().getSheets()[APPLICATIONS_SHEET_INDEX];
+  if (apps.getLastRow() < 2) return false;
+  const values = apps.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const cEmail = headers.indexOf('email'), cRole = headers.indexOf('role');
+  let done = false;
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][cEmail] || '').trim().toLowerCase() !== email) continue;
+    if (role && String(values[i][cRole] || '').toLowerCase() !== role) continue;
+    Object.keys(updates).forEach(function (h) {
+      const c = headers.indexOf(h);
+      if (c !== -1) apps.getRange(i + 1, c + 1).setValue(updates[h]);
+    });
+    done = true;
+  }
+  return done;
+}
+
+// Step 0: pool bookkeeping. Anyone sitting in the pool ('accepted') without
+// a pool_entered_at stamp gets one now - this is what makes the "waiting
+// 2+ weeks" flag work, and it resets automatically when someone re-enters
+// the pool (their stamp is cleared whenever they leave it).
+function poolBookkeeping_() {
+  const apps = SpreadsheetApp.getActiveSpreadsheet().getSheets()[APPLICATIONS_SHEET_INDEX];
+  if (apps.getLastRow() < 2) return;
+  const values = apps.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const cStatus = headers.indexOf('status'), cStamp = headers.indexOf('pool_entered_at');
+  if (cStatus === -1 || cStamp === -1) return;
+  const now = new Date().toISOString();
+  for (let i = 1; i < values.length; i++) {
+    const st = String(values[i][cStatus] || '').trim().toLowerCase();
+    const stamp = String(values[i][cStamp] || '');
+    if (st === 'accepted' && !stamp) apps.getRange(i + 1, cStamp + 1).setValue(now);
+    if (st !== 'accepted' && stamp) apps.getRange(i + 1, cStamp + 1).setValue('');
+  }
+}
+
+// Step 6 (after generation): start a round for every pool member who has
+// fresh 'proposed' rows - both mentees and mentors get their blinded
+// profiles automatically, exactly once per round.
+function autoSendProfiles_() {
+  const m = matchRows_();
+  const neverMatch = readNeverMatch();
+  // People with live rows ('proposed', or 'sent' when the counterpart's
+  // round was started manually and this side never got theirs) who are
+  // still marked accepted need a round started.
+  const byPerson = {};  // 'role|email' -> true
+  m.rows.forEach(function (r) {
+    const st = String(r[mcol_('status')]).trim().toLowerCase();
+    if (st !== 'proposed' && st !== 'sent') return;
+    byPerson['mentee|' + String(r[mcol_('mentee_email')]).trim().toLowerCase()] = true;
+    byPerson['mentor|' + String(r[mcol_('mentor_email')]).trim().toLowerCase()] = true;
+  });
+  const applicants = readApplicants();
+  const started = [];
+  applicants.forEach(function (a) {
+    if (a.status !== 'accepted' || neverMatch.banned[a.email]) return;
+    if (!byPerson[a.role + '|' + a.email]) return;
+    const n = startRound_(a.role, a.email);
+    if (n) started.push(a.role + ' ' + a.email + ' (' + n + ' candidate(s))');
+  });
+  return started;
+}
+
+// Step 2b: close rounds older than match_round_days. Responders with no
+// mutual match return to the pool (with an email and a fresh pool timer);
+// non-responders are parked as 'unresponsive' until an admin intervenes.
+// Their frozen 'sent' rows become 'expired' (swept by the next generation,
+// so unconsumed pairings can legitimately reappear in future rounds).
+function resolveExpiredRounds_() {
+  const settings = getSettings();
+  const now = Date.now();
+  const report = { returned: [], unresponsive: [] };
+  const applicants = readApplicants().filter(function (a) {
+    return a.status === 'reviewing-matches';
+  });
+  if (!applicants.length) return report;
+
+  const links = tokenSheetRows_(PROFILE_LINKS_SHEET, PROFILE_LINK_HEADERS);
+  const linkByPerson = {};
+  links.rows.forEach(function (r) {
+    linkByPerson[String(r[1]) + '|' + String(r[2]).toLowerCase()] = r;
+  });
+  const m = matchRows_();
+
+  applicants.forEach(function (a) {
+    const link = linkByPerson[a.role + '|' + a.email];
+    if (!link) return;
+    const sentAt = new Date(String(link[6])).getTime();
+    if (isNaN(sentAt) || (now - sentAt) / 86400000 < settings.match_round_days) return;
+
+    // Anyone already in the mutual/approval/compact funnel is not expired.
+    const emailCol = mcol_(a.role === 'mentee' ? 'mentee_email' : 'mentor_email');
+    const inFunnel = m.rows.some(function (r) {
+      return String(r[emailCol]).trim().toLowerCase() === a.email &&
+        FUNNEL_STATUSES.indexOf(String(r[mcol_('status')]).trim().toLowerCase()) !== -1;
+    });
+    if (inFunnel) return;
+
+    const responded = !!String(link[8]);   // responded_at
+
+    // Which pairs did this person actively pick?
+    const pickedPairs = {};
+    if (responded && String(link[9])) {
+      const byCode = {};
+      try { JSON.parse(link[4] || '[]').forEach(function (c) { byCode[c.code] = c.pair_key; }); } catch (e) {}
+      String(link[9]).split(',').forEach(function (code) {
+        const pk = byCode[code.trim()];
+        if (pk) pickedPairs[pk] = true;
+      });
+    }
+
+    // Close out this person's frozen round rows: a pair they responded to
+    // but did NOT pick is a soft decline (never re-proposed); everything
+    // else merely expires and may legitimately reappear in a future round.
+    m.rows.forEach(function (r, i) {
+      if (String(r[emailCol]).trim().toLowerCase() !== a.email) return;
+      const current = String(r[mcol_('status')]).trim().toLowerCase();
+      if (current !== 'sent' && current !== 'expired') return;
+      const pk = String(r[mcol_('pair_key')]);
+      const closed = (responded && !pickedPairs[pk]) ? 'declined' : 'expired';
+      // 'declined' (a responder passed on this pair) always wins over a
+      // plain expiry, whichever side of the pair resolves first.
+      if (current === 'sent' || closed === 'declined') {
+        m.sheet.getRange(i + 2, mcol_('status') + 1).setValue(closed);
+        r[mcol_('status')] = closed;
+      }
+    });
+    if (responded) {
+      updateApplicant_(a.email, a.role, {
+        status: 'accepted', pool_entered_at: new Date().toISOString()
+      });
+      sendMail_(a.email,
+        MENTORSHIP_PROGRAM + ' - back in the matching pool',
+        'Hi ' + (a.name || 'there') + ',\n\n' +
+        'Thanks for reviewing your candidate matches. A mutual match did not ' +
+        'come together in this round - that is normal, especially early in a ' +
+        'cycle, and it is no reflection on your application.\n\n' +
+        'You are back in the matching pool as of today. The matcher runs ' +
+        'nightly as new ' + (a.role === 'mentee' ? 'mentors' : 'mentees') + ' join, ' +
+        'and you can expect to hear from us again within 1-2 weeks.\n\n' +
+        'Questions any time - just reply to this email.\n\n' +
+        '- The ISEV-SNEV Mentorship Committee');
+      report.returned.push(a.role + ' ' + a.email);
+    } else {
+      updateApplicant_(a.email, a.role, { status: 'unresponsive', pool_entered_at: '' });
+      report.unresponsive.push(a.role + ' ' + a.email);
+    }
+  });
+  return report;
 }
 
 // Step 2: a pair is mutual when the mentee's picks and the mentor's picks
@@ -1006,7 +1218,7 @@ function detectMutualInterest_() {
     const st = String(r[mcol_('status')]).trim().toLowerCase();
     const pk = String(r[mcol_('pair_key')]);
     const isMutual = pickedPairs.mentee[pk] && pickedPairs.mentor[pk];
-    if (st === 'proposed' && isMutual) {
+    if ((st === 'sent' || st === 'proposed') && isMutual) {
       m.sheet.getRange(i + 2, mcol_('status') + 1).setValue('mutual-interest');
       newlyMutual.push(r);
       mutualRows.push(r);
@@ -1101,9 +1313,17 @@ function progressLifecycle_() {
   });
 
   // 3c. reminders (one each) + stall flags, across all token artifacts
+  const applicantStatus = {};
+  readApplicants().forEach(function (a) {
+    applicantStatus[a.role + '|' + a.email] = a.status;
+  });
   const artifacts = [
     { name: 'blinded profiles', sheet: PROFILE_LINKS_SHEET, headers: PROFILE_LINK_HEADERS,
       sentCol: 6, doneCol: 8, remCol: 10, emailCol: 2, nameCol: 3,
+      // Only nag while that person's round is actually open.
+      skip: function (r) {
+        return applicantStatus[String(r[1]) + '|' + String(r[2]).toLowerCase()] !== 'reviewing-matches';
+      },
       link: function (t) { return MENTORSHIP_SITE_URL + 'matches.html?t=' + t; },
       what: 'your blinded candidate matches' },
     { name: 'compact', sheet: COMPACTS_SHEET, headers: COMPACT_HEADERS,
@@ -1119,6 +1339,7 @@ function progressLifecycle_() {
     const t = tokenSheetRows_(a.sheet, a.headers);
     t.rows.forEach(function (r, i) {
       if (String(r[a.doneCol])) return;                  // already responded/signed
+      if (a.skip && a.skip(r)) return;                   // round no longer open
       const age = days(String(r[a.sentCol]));
       if (age === null) return;
       const reminders = Number(r[a.remCol]) || 0;

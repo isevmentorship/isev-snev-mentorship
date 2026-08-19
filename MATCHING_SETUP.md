@@ -128,17 +128,31 @@ new code. Until you do, matches.html links will show "This link isn't valid."
 
 The nightly trigger runs a full pipeline, in this order:
 
+0. **Pool bookkeeping.** Everyone with status `accepted` carries a
+   `pool_entered_at` timer; it re-stamps automatically whenever someone
+   (re-)enters the pool.
 1. **Pool retirement.** People in an admin-approved or active pair get their
    applications-sheet `status` flipped to `matched-pending` (compact phase)
    or `matched` (active), with counterpart email(s) in `matched_with`.
    Mentors only retire when ALL their `mentor_slots` are consumed. This runs
    FIRST, so the matcher below never re-proposes someone who is taken.
 2. **Mutual-interest detection.** When both sides' blinded-profile picks
-   include the same pair, that Proposed Matches row flips from `proposed` to
+   include the same pair, that Proposed Matches row flips to
    `mutual-interest` automatically. When picks collide (two mentees mutually
    matched to a one-slot mentor), the digest shows a fit-maximizing
    **suggested assignment** plus the conflicting alternates - approving stays
    a human decision: the committee sets the winning rows to `admin-approved`.
+2b. **Round expiry (the 2-week window).** Blinded-profile rounds last
+   `match_round_days` (default 14). When a round closes with no mutual match:
+   - **Responders return to the pool** (`accepted`, fresh pool timer) and get
+     an email explaining that no match came together this round and they can
+     expect to hear back within 1-2 weeks. Candidates they responded to but
+     did NOT pick become `declined` pairs (never re-proposed); the rest
+     `expire` and may legitimately reappear in a future round.
+   - **Non-responders are parked as `unresponsive`** and stay out of matching
+     until an admin sets them back to `accepted` - or bans them by adding
+     their email to the **Never Match** tab with the second column left blank
+     (a single-email row is a full ban; two emails still bar just that pair).
 3. **Compacts and activation.** Every `admin-approved` row automatically
    emails BOTH parties a personal compact-signing link
    (`compact.html?t=...`, view/sign tracked in the **Compacts** tab) plus a
@@ -149,10 +163,21 @@ The nightly trigger runs a full pipeline, in this order:
    real names to both, `match_start` stamped, row -> `active`. No committee
    action needed between "approved" and "introduced".
 4. **Fresh match generation** on the reduced pool.
+4b. **Automatic blinded-profile sends.** Everyone in the pool who received
+   new proposals - mentees AND mentors - automatically gets their blinded
+   candidates email the same run. That starts their 2-week round and moves
+   their status to `reviewing-matches`, which excludes them from further
+   match generation until the round resolves. Nobody is emailed daily: one
+   send per round, one reminder at day 7. (The manual "Send blinded
+   profiles" menu items still exist for re-sends and special cases; they
+   plug into the same round machinery.)
 5. **Reminders and stall flags.** One reminder email per artifact (blinded
    profiles, compact, survey) after `reminder_after_days` (default 7) with no
    response; anyone silent past `stalled_after_days` (default 14) appears in
-   the digest under "UNRESPONSIVE 2+ WEEKS".
+   the digest under "UNRESPONSIVE 2+ WEEKS". Separately, anyone sitting in
+   the pool `pool_wait_flag_days` (default 14) with nothing sent is flagged
+   so admins can reach out with expected dates or hand-pick a
+   below-threshold match (the held rows are visible in Proposed Matches).
 6. **Surveys.** `checkin_after_days` (default 180) after `match_start`, both
    parties get the 6-month check-in (`survey.html`); at `closeout_after_days`
    (default 365), the 12-month closeout survey (questions from
@@ -168,10 +193,19 @@ The Mentorship menu's "Run full daily pipeline now" does the same on demand.
 create the **Mentorship Toolkits** Drive folder with the two PDFs (named
 exactly `Mentor Toolkit.pdf` and `Mentee Toolkit.pdf`).
 
-**Status cheat-sheet (Proposed Matches):** `proposed` -> `mutual-interest`
-(auto) -> `admin-approved` (committee, the ONE manual gate) -> `compact-sent`
-(auto) -> `active` (auto on both signatures) -> `completed` (committee, after
-the closeout). `held-below-threshold` and `declined` as before.
+**Status cheat-sheet (Proposed Matches):** `proposed` (generated) -> `sent`
+(auto: profiles out, 2-week round running) -> `mutual-interest` (auto) ->
+`admin-approved` (committee, the ONE manual gate) -> `compact-sent` (auto) ->
+`active` (auto on both signatures) -> `completed` (committee, after the
+closeout). Rounds that close without a mutual match leave rows as `expired`
+(may be re-proposed later) or `declined` (a responder passed on the pair;
+never re-proposed). `held-below-threshold` as before.
+
+**Status cheat-sheet (applications sheet):** `submitted` (blank) ->
+`accepted` (committee) -> `reviewing-matches` (auto, round running) -> back
+to `accepted` (auto, round closed without a match) or `unresponsive` (auto,
+no reply in 2 weeks; admin decides) -> `matched-pending` (auto, compact
+phase) -> `matched` (auto, active pair). `declined`/`withdrawn` as before.
 
 ## Updating the engine later
 

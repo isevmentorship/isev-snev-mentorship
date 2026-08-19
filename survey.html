@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mentorship Survey · ISEV-SNEV Mentorship Program</title>
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='30' fill='%230f2a44'/><text x='50%25' y='55%25' text-anchor='middle' font-family='Georgia' font-size='22' fill='white' font-weight='700'>IS</text></svg>" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    .q { margin: 1.4rem 0; }
+    .q > label.qlabel { display: block; font-weight: 600; margin-bottom: 0.5rem; }
+    .q .req { color: #b3261e; }
+    .scale { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .scale label { border: 1px solid var(--border, #dde5ec); border-radius: 8px;
+                   padding: 0.45rem 0.85rem; cursor: pointer; user-select: none; }
+    .scale input { margin-right: 0.35rem; }
+    .scale label:has(input:checked) { background: #0f2a44; color: #fff; border-color: #0f2a44; }
+    .q textarea, .q select { width: 100%; max-width: 560px; }
+    .q .hint { color: var(--muted); font-size: 0.85rem; margin-top: 0.3rem; }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <span class="brand-mark">IS</span>
+        <span>ISEV &times; SNEV <span style="color:var(--muted);font-weight:500">Mentorship</span></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="index.html">Program home</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section style="padding:2.5rem 0 3rem;">
+      <div class="container" style="max-width:780px;">
+
+        <section id="screen-loading" class="panel"><h2>Loading your survey…</h2></section>
+
+        <section id="screen-invalid" class="panel" hidden>
+          <h2>This link isn't valid.</h2>
+          <p style="color:var(--muted);">
+            Check the most recent email from the committee, or
+            <a href="mailto:isevmentorship@gmail.com">contact us</a> for a fresh link.
+          </p>
+        </section>
+
+        <section id="screen-survey" class="panel" hidden>
+          <h4 id="surveyKicker">Mentorship survey</h4>
+          <h2 id="surveyTitle">How is it going?</h2>
+          <p style="color:var(--muted);max-width:640px;" id="surveyIntro"></p>
+          <form id="surveyForm"><!-- questions injected --></form>
+          <div class="form-actions" style="margin-top:1.5rem;">
+            <button class="btn btn-primary" id="submitBtn">Submit survey</button>
+          </div>
+          <p id="surveyStatus" class="form-status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="screen-done" class="panel" hidden>
+          <h4>Survey received</h4>
+          <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <h2 style="margin:0;">Thank you.</h2>
+            <span class="status-pill green">Recorded</span>
+          </div>
+          <p style="color:var(--muted);max-width:640px;">
+            Your answers are visible to the program committee only - never to
+            your mentorship counterpart. They directly shape how the program
+            evolves. Thanks for taking the time.
+          </p>
+        </section>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container" style="font-size:0.85rem;">
+      ISEV-SNEV Mentorship Program. <a href="index.html">Return to landing page</a>.
+    </div>
+  </footer>
+
+  <script>
+  (function () {
+    "use strict";
+    var API = "https://script.google.com/macros/s/AKfycbzLrjM3KC3dEEt1xVuS7yBQZjHc0oQUIkZneyJ93LFaHBYLQRYbq2RFOuUsjYweYJ0p/exec";
+    var token = new URLSearchParams(window.location.search).get("t") || "";
+
+    function show(id) {
+      ["screen-loading", "screen-invalid", "screen-survey", "screen-done"]
+        .forEach(function (s) { document.getElementById(s).hidden = (s !== id); });
+    }
+
+    // Question factories -------------------------------------------------
+    function scale(id, label, req, lo, hi, loLbl, hiLbl) {
+      var opts = "";
+      for (var v = lo; v <= hi; v++) {
+        opts += '<label><input type="radio" name="' + id + '" value="' + v + '">' + v + "</label>";
+      }
+      return '<div class="q" data-q="' + id + '" data-req="' + (req ? 1 : 0) + '">' +
+        '<label class="qlabel">' + label + (req ? ' <span class="req">*</span>' : "") + "</label>" +
+        '<div class="scale">' + opts + "</div>" +
+        '<p class="hint">' + lo + " = " + loLbl + " · " + hi + " = " + hiLbl + "</p></div>";
+    }
+    function select(id, label, req, choices) {
+      return '<div class="q" data-q="' + id + '" data-req="' + (req ? 1 : 0) + '">' +
+        '<label class="qlabel">' + label + (req ? ' <span class="req">*</span>' : "") + "</label>" +
+        '<select name="' + id + '"><option value="">Select…</option>' +
+        choices.map(function (c) { return "<option>" + c + "</option>"; }).join("") +
+        "</select></div>";
+    }
+    function multi(id, label, choices) {
+      return '<div class="q" data-q="' + id + '" data-req="0">' +
+        '<label class="qlabel">' + label + "</label>" +
+        choices.map(function (c) {
+          return '<label class="check-row" style="margin:0.25rem 0;"><input type="checkbox" name="' + id + '" value="' + c + '"><span>' + c + "</span></label>";
+        }).join("") + "</div>";
+    }
+    function text(id, label) {
+      return '<div class="q" data-q="' + id + '" data-req="0">' +
+        '<label class="qlabel">' + label + "</label>" +
+        '<textarea name="' + id + '" rows="3" maxlength="300"></textarea>' +
+        '<p class="hint">Up to 300 characters.</p></div>';
+    }
+
+    var MEET_CHOICES = ["More than bi-monthly", "Bi-monthly, as expected",
+      "Less than bi-monthly", "We started but stopped early", "We never met"];
+    var OUTCOMES = ["Submitted a grant or fellowship application", "Accepted a new position",
+      "Co-authored a paper", "Presented at a conference", "Expanded my professional network",
+      "Clarified my career direction", "Developed specific skills (communication, leadership, etc.)",
+      "None of the above yet, but I feel better positioned"];
+
+    function buildQuestions(wave, role) {
+      if (wave === "6mo") {
+        return [
+          scale("experience", "How is the mentorship going so far?", true, 1, 5, "Poorly", "Excellently"),
+          select("meetings_so_far", "How many times have you met so far?", true,
+            ["Not yet", "Once", "Twice", "Three or more times"]),
+          scale("on_track", "Are you making progress on the goals you set together?", false, 1, 5, "No progress", "Substantial progress"),
+          select("continue", "Do you want to continue the mentorship for the rest of the cycle?", true,
+            ["Yes, as is", "Yes, with some adjustments", "Unsure", "No"]),
+          text("feedback", "Anything the committee should know or could help with?")
+        ].join("");
+      }
+      // 12-month closeout
+      var qs = [
+        scale("experience", "Overall, how would you rate your experience of this mentorship cycle?", true, 1, 5, "Poor", "Excellent"),
+        scale("match_fit", "How good was the match we produced for you?", true, 1, 5, "Poor fit", "Excellent fit"),
+        select("meetings", "How often did you actually meet?", true, MEET_CHOICES),
+        scale("progress", role === "mentor"
+          ? "From what you observed, did the mentee make meaningful progress on their goals?"
+          : "How much progress did you make on the professional-development goals you listed when you applied?",
+          true, 1, 5, "None", "Substantial")
+      ];
+      if (role === "mentee") {
+        qs.push(multi("outcomes", "Did anything concrete come out of the mentorship this year? (select all that apply)", OUTCOMES));
+      } else {
+        qs.push(scale("own_value", "Did mentoring in this program deliver professional-development value for you?", true, 1, 5, "No", "Yes, significantly"));
+      }
+      qs.push(scale("compact_useful", "How useful was the Mentorship Program Compact?", false, 1, 5, "Not useful", "Very useful"));
+      qs.push(scale("toolkit_useful", "How useful was the " + role + " toolkit?", false, 1, 5, "Not useful", "Very useful"));
+      qs.push(scale("nps", "Would you recommend the program to a colleague" + (role === "mentee" ? " or trainee" : "") + "?", true, 0, 10, "Not at all likely", "Extremely likely"));
+      qs.push(select("forward", role === "mentor"
+        ? "Would you be willing to mentor again in a future cycle?"
+        : "Would you apply to the program again in a future cycle if eligible?",
+        true,
+        role === "mentor"
+          ? ["Yes, please re-enrol me automatically", "Yes, ask me again in 6 months", "Not right now", "No, please do not ask again"]
+          : ["Yes", "Maybe", "No", "Not eligible"]));
+      if (role === "mentee") {
+        qs.push(select("future_mentor", "Would you be interested in becoming a mentor in this program in the future?", false, ["Yes", "Maybe", "No"]));
+      }
+      qs.push(text("feedback", "Is there anything else the committee should know?"));
+      return qs.join("");
+    }
+
+    function collectAnswers() {
+      var form = document.getElementById("surveyForm");
+      var answers = {};
+      var missing = null;
+      Array.prototype.forEach.call(form.querySelectorAll(".q"), function (q) {
+        var id = q.dataset.q, req = q.dataset.req === "1";
+        var radios = q.querySelectorAll('input[type="radio"]');
+        var checks = q.querySelectorAll('input[type="checkbox"]');
+        var sel = q.querySelector("select");
+        var ta = q.querySelector("textarea");
+        var val = "";
+        if (radios.length) {
+          var picked = q.querySelector('input[type="radio"]:checked');
+          val = picked ? picked.value : "";
+        } else if (checks.length) {
+          val = Array.prototype.filter.call(checks, function (c) { return c.checked; })
+            .map(function (c) { return c.value; }).join("; ");
+        } else if (sel) { val = sel.value; }
+        else if (ta) { val = ta.value.trim(); }
+        if (req && !val && !missing) missing = q;
+        if (val) answers[id] = val;
+      });
+      return { answers: answers, missing: missing };
+    }
+
+    document.getElementById("submitBtn").addEventListener("click", function (ev) {
+      ev.preventDefault();
+      var status = document.getElementById("surveyStatus");
+      status.className = "form-status";
+      var got = collectAnswers();
+      if (got.missing) {
+        status.classList.add("error");
+        status.textContent = "Please answer the required questions (marked *).";
+        got.missing.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      status.textContent = "Submitting…";
+      fetch(API + "?action=survey_submit&t=" + encodeURIComponent(token) +
+            "&answers=" + encodeURIComponent(JSON.stringify(got.answers)))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data && data.ok) { show("screen-done"); }
+          else {
+            status.classList.add("error");
+            status.textContent = "Could not record your answers. Please try again or reply to the committee email.";
+          }
+        })
+        .catch(function () {
+          status.classList.add("error");
+          status.textContent = "Network problem - please try again in a moment.";
+        });
+    });
+
+    if (!token) { show("screen-invalid"); return; }
+    fetch(API + "?action=survey&t=" + encodeURIComponent(token))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.ok) { show("screen-invalid"); return; }
+        if (data.responded) { show("screen-done"); return; }
+        var is6 = data.wave === "6mo";
+        document.getElementById("surveyKicker").textContent =
+          is6 ? "6-month check-in" : "12-month closeout survey";
+        document.getElementById("surveyTitle").textContent = data.name
+          ? (data.name + ", " + (is6 ? "how is it going?" : "how did it go?"))
+          : (is6 ? "How is it going?" : "How did it go?");
+        document.getElementById("surveyIntro").textContent = is6
+          ? "Two minutes, five questions. Your answers go to the program committee only - never to your mentorship counterpart."
+          : "About five minutes. Your answers go to the program committee only - never to your mentorship counterpart - and directly shape the next cycle.";
+        document.getElementById("surveyForm").innerHTML = buildQuestions(data.wave, data.role);
+        show("screen-survey");
+      })
+      .catch(function () { show("screen-invalid"); });
+  })();
+  </script>
+</body>
+</html>

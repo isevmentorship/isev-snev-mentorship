@@ -124,6 +124,55 @@ new code. Until you do, matches.html links will show "This link isn't valid."
 
 ---
 
+## Lifecycle automation (the daily pipeline)
+
+The nightly trigger runs a full pipeline, in this order:
+
+1. **Pool retirement.** People in an admin-approved or active pair get their
+   applications-sheet `status` flipped to `matched-pending` (compact phase)
+   or `matched` (active), with counterpart email(s) in `matched_with`.
+   Mentors only retire when ALL their `mentor_slots` are consumed. This runs
+   FIRST, so the matcher below never re-proposes someone who is taken.
+2. **Mutual-interest detection.** When both sides' blinded-profile picks
+   include the same pair, that Proposed Matches row flips from `proposed` to
+   `mutual-interest` automatically. When picks collide (two mentees mutually
+   matched to a one-slot mentor), the digest shows a fit-maximizing
+   **suggested assignment** plus the conflicting alternates - approving stays
+   a human decision: the committee sets the winning rows to `admin-approved`.
+3. **Compacts and activation.** Every `admin-approved` row automatically
+   emails BOTH parties a personal compact-signing link
+   (`compact.html?t=...`, view/sign tracked in the **Compacts** tab) plus a
+   toolkit email (attaches `Mentor Toolkit.pdf` / `Mentee Toolkit.pdf` from a
+   Drive folder named **Mentorship Toolkits** - create it once and drop the
+   two PDFs in), and the row moves to `compact-sent`. The moment the second
+   signature lands, the pair is **activated automatically**: intro email with
+   real names to both, `match_start` stamped, row -> `active`. No committee
+   action needed between "approved" and "introduced".
+4. **Fresh match generation** on the reduced pool.
+5. **Reminders and stall flags.** One reminder email per artifact (blinded
+   profiles, compact, survey) after `reminder_after_days` (default 7) with no
+   response; anyone silent past `stalled_after_days` (default 14) appears in
+   the digest under "UNRESPONSIVE 2+ WEEKS".
+6. **Surveys.** `checkin_after_days` (default 180) after `match_start`, both
+   parties get the 6-month check-in (`survey.html`); at `closeout_after_days`
+   (default 365), the 12-month closeout survey (questions from
+   CLOSEOUT_SURVEY.md). Views, responses, and answers land in the **Surveys**
+   tab (`answers_json`), and each response is also emailed to the committee.
+7. **One digest email** covering all of it, with a direct link to the Sheet.
+
+The Mentorship menu's "Run full daily pipeline now" does the same on demand.
+
+**One-time setup for this feature set:** re-paste `matching_engine.gs`, run
+`setupMentorshipSystem` (creates the Compacts and Surveys tabs, adds the
+`matched_with` column, migrates headers), redeploy the web app in place, and
+create the **Mentorship Toolkits** Drive folder with the two PDFs (named
+exactly `Mentor Toolkit.pdf` and `Mentee Toolkit.pdf`).
+
+**Status cheat-sheet (Proposed Matches):** `proposed` -> `mutual-interest`
+(auto) -> `admin-approved` (committee, the ONE manual gate) -> `compact-sent`
+(auto) -> `active` (auto on both signatures) -> `completed` (committee, after
+the closeout). `held-below-threshold` and `declined` as before.
+
 ## Updating the engine later
 
 Edit `apps_script/matching_engine.gs` in this repo, copy it, paste over the

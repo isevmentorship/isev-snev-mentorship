@@ -500,7 +500,7 @@ function generateMatches() {
           c.delta === null ? 'unknown' : c.delta,
           c.conflict ? 'FLAG' : '',
           below ? 'held-below-threshold' : 'proposed',
-          '', c.pairKey
+          '', c.pairKey, ''   // committee_notes, pair_key, match_start
         ]);
       });
     });

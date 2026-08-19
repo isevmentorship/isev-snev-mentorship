@@ -567,11 +567,19 @@ function sendCommitteeDigest(result) {
   // Skip the email only when there is truly nothing to say.
   if (!result.written && !submitted.length && !menteesWaiting.length && !mentorsIdle.length) return;
 
-  MailApp.sendEmail({
-    to: DIGEST_EMAIL,
-    subject: 'Mentorship digest: ' + result.written + ' new proposal(s), ' +
-             submitted.length + ' awaiting review',
-    body: lines.join('\n')
+  sendMail_(DIGEST_EMAIL,
+    'Mentorship digest: ' + result.written + ' new proposal(s), ' +
+    submitted.length + ' awaiting review',
+    lines.join('\n'), DIGEST_EMAIL);
+}
+
+// GmailApp (not MailApp): sends through the real Gmail account, so messages
+// carry its reputation, land in its Sent folder, and show a proper sender
+// name - MailApp mail is far more likely to be spam-foldered.
+function sendMail_(to, subject, body, replyTo) {
+  GmailApp.sendEmail(to, subject, body, {
+    name: 'ISEV-SNEV Mentorship Committee',
+    replyTo: replyTo || DIGEST_EMAIL
   });
 }
 
@@ -617,19 +625,16 @@ function sendProfiles_(side) {
   const link = MENTORSHIP_SITE_URL + 'matches.html?t=' + token;
   const counterpart = side === 'mentee' ? 'mentor' : 'mentee';
 
-  MailApp.sendEmail({
-    to: targetEmail,
-    subject: MENTORSHIP_PROGRAM + ' - your blinded ' + counterpart + ' candidates',
-    body:
-      'Hi ' + (result.name || 'there') + ',\n\n' +
-      'Good news - the matching committee has candidate ' + counterpart + 's for you. ' +
-      'Names and affiliations stay hidden until both sides agree to a pairing.\n\n' +
-      'View your candidates and make your picks here:\n' + link + '\n\n' +
-      'This link is personal to you - please don\'t forward it. If anything looks ' +
-      'off, just reply to this email.\n\n' +
-      '- The ISEV-SNEV Mentorship Committee',
-    replyTo: DIGEST_EMAIL
-  });
+  sendMail_(targetEmail,
+    MENTORSHIP_PROGRAM + ' - your blinded ' + counterpart + ' candidates',
+    'Hi ' + (result.name || 'there') + ',\n\n' +
+    'Good news - the matching committee has candidate ' + counterpart + 's for you. ' +
+    'Names and affiliations stay hidden until both sides agree to a pairing.\n\n' +
+    'View your candidates and make your picks here:\n' + link + '\n\n' +
+    'This link is personal to you - please don\'t forward it. If anything looks ' +
+    'off, just reply to this email.\n\n' +
+    '- The ISEV-SNEV Mentorship Committee',
+    DIGEST_EMAIL);
   notify_('Sent ' + result.candidates.length + ' blinded profile(s) to ' + targetEmail + '.');
 }
 
@@ -798,11 +803,9 @@ function recordInterest_(p) {
   lines.push('');
   lines.push('Mark reciprocal interest in the Sheet: ' +
              SpreadsheetApp.getActiveSpreadsheet().getUrl());
-  MailApp.sendEmail({
-    to: DIGEST_EMAIL,
-    subject: MENTORSHIP_PROGRAM + ' - picks from ' + hit.values[2],
-    body: lines.join('\n')
-  });
+  sendMail_(DIGEST_EMAIL,
+    MENTORSHIP_PROGRAM + ' - picks from ' + hit.values[2],
+    lines.join('\n'), String(hit.values[2]));
   return jsonReply_({ ok: true, recorded: picks });
 }
 

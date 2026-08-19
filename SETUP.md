@@ -128,31 +128,36 @@ function doPost(e) {
       })
       .join('\n');
 
+    // GmailApp (not MailApp) throughout: sends through the real Gmail
+    // account, so messages carry its reputation, appear in its Sent folder,
+    // and show a proper sender name. MailApp mail is far more likely to be
+    // spam-foldered.
+
     // 1) Copy to the committee. Reply-to is the applicant, so the committee
     //    can respond with one click.
-    MailApp.sendEmail({
-      to: COMMITTEE_EMAIL,
-      subject: 'Mentorship application (' + (data.role || 'unknown') + '): ' + (data.full_name || ''),
-      body: summary,
-      replyTo: String(data.email || COMMITTEE_EMAIL)
-    });
+    GmailApp.sendEmail(
+      COMMITTEE_EMAIL,
+      'Mentorship application (' + (data.role || 'unknown') + '): ' + (data.full_name || ''),
+      summary,
+      { name: 'ISEV-SNEV Mentorship Committee',
+        replyTo: String(data.email || COMMITTEE_EMAIL) }
+    );
 
     // 2) Confirmation to the applicant, with a copy of their answers.
     if (data.email) {
-      MailApp.sendEmail({
-        to: String(data.email),
-        subject: PROGRAM_NAME + ' - application received',
-        body:
-          'Hi ' + (data.full_name || 'there') + ',\n\n' +
-          'Thanks for applying to the ' + PROGRAM_NAME + ' as a ' +
-          (data.role || 'participant') + '. The matching committee will review ' +
-          'your application; you should hear back within two weeks.\n\n' +
-          'For your records, here is a copy of your answers:\n\n' +
-          summary + '\n\n' +
-          'If anything looks wrong, just reply to this email.\n\n' +
-          '- The ISEV-SNEV Mentorship Committee\n' + SITE_URL,
-        replyTo: COMMITTEE_EMAIL
-      });
+      GmailApp.sendEmail(
+        String(data.email),
+        PROGRAM_NAME + ' - application received',
+        'Hi ' + (data.full_name || 'there') + ',\n\n' +
+        'Thanks for applying to the ' + PROGRAM_NAME + ' as a ' +
+        (data.role || 'participant') + '. The matching committee will review ' +
+        'your application; you should hear back within two weeks.\n\n' +
+        'For your records, here is a copy of your answers:\n\n' +
+        summary + '\n\n' +
+        'If anything looks wrong, just reply to this email.\n\n' +
+        '- The ISEV-SNEV Mentorship Committee\n' + SITE_URL,
+        { name: 'ISEV-SNEV Mentorship Committee', replyTo: COMMITTEE_EMAIL }
+      );
     }
 
     // AJAX submissions (the normal path) get JSON back and the site shows its

@@ -80,6 +80,17 @@ const PRESERVED_MATCH_STATUSES = [
 const FUNNEL_STATUSES = [
   'mutual-interest', 'admin-approved', 'compact-sent', 'compact-signed', 'active'
 ];
+
+// Dropdown-chip option lists, applied as data validation by setup.
+const APPLICANT_STATUS_OPTIONS = [
+  'submitted', 'accepted', 'reviewing-matches', 'unresponsive',
+  'matched-pending', 'matched', 'graduated', 'declined', 'withdrawn'
+];
+const MATCH_STATUS_OPTIONS = [
+  'proposed', 'sent', 'mutual-interest', 'admin-approved', 'compact-sent',
+  'compact-signed', 'active', 'completed', 'terminated-early',
+  'declined', 'expired', 'held-below-threshold'
+];
 // Statuses that consume a mentor slot (§3.4 mentor capacity rule).
 const SLOT_CONSUMING_STATUSES = [
   'admin-approved', 'compact-sent', 'compact-signed', 'active'
@@ -167,6 +178,23 @@ function setupMentorshipSystem() {
     sh.getRange(1, 1, 1, spec[1].length).setValues([spec[1]]).setFontWeight('bold');
   });
 
+  // 4c. Dropdown chips on the status-like columns the committee edits.
+  const appHeaders = apps.getRange(1, 1, 1, apps.getLastColumn()).getValues()[0].map(String);
+  const appStatusCol = appHeaders.indexOf('status');
+  if (appStatusCol !== -1) applyDropdown_(apps, appStatusCol + 1, APPLICANT_STATUS_OPTIONS);
+  applyDropdown_(matches, mcol_('status') + 1, MATCH_STATUS_OPTIONS);
+  // Settings: allow_same_institution gets a TRUE/FALSE chip.
+  if (settings.getLastRow() > 1) {
+    const keys = settings.getRange(2, 1, settings.getLastRow() - 1, 1).getValues();
+    keys.forEach(function (k, i) {
+      if (String(k[0]).trim() === 'allow_same_institution') {
+        settings.getRange(i + 2, 2).setDataValidation(
+          SpreadsheetApp.newDataValidation()
+            .requireValueInList(['TRUE', 'FALSE'], true).setAllowInvalid(false).build());
+      }
+    });
+  }
+
   // 5. Triggers (idempotent: remove ours, re-add)
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (['nightlyMatchRun', 'weeklySnapshot'].indexOf(t.getHandlerFunction()) !== -1) {
@@ -193,6 +221,18 @@ function notify_(message) {
   try {
     SpreadsheetApp.getActiveSpreadsheet().toast(message, 'Mentorship', 10);
   } catch (e) { /* no UI available (e.g. time-driven trigger) - log only */ }
+}
+
+// Data-validation dropdown on a whole column (below the header). Renders as
+// selectable chips in the Sheets UI; API writes are unaffected. Colors can
+// be assigned once in the UI (open the dropdown -> gear icon) and persist.
+function applyDropdown_(sheet, colIndex1, options) {
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(options, true)
+    .setAllowInvalid(false)
+    .setHelpText('Pick one of: ' + options.join(', '))
+    .build();
+  sheet.getRange(2, colIndex1, sheet.getMaxRows() - 1, 1).setDataValidation(rule);
 }
 
 function onOpen() {

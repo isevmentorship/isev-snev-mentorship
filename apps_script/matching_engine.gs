@@ -16,15 +16,22 @@
           snapshot trigger (Mondays ~4am)
    4. Reload the Sheet. A "Mentorship" menu appears with manual actions.
 
-   DAILY USE
+   DAILY USE (one-to-one flow)
    - New applications arrive with a blank status (= "submitted").
    - The committee reviews each row and sets status to `accepted`
      (or `declined` / `withdrawn`). Only accepted applicants are matched.
-   - The engine writes candidate pairs to `Proposed Matches`. Rows it
-     generated stay in status `proposed` (or `held-below-threshold`) and
-     are re-derived on every run; the committee advances good ones to
-     `mutual-interest` -> `admin-approved` -> `active` (those are never
-     touched by regeneration). Set `declined` to permanently retire a pair.
+   - The engine assigns each mentee ONE best-fit mentor per run (earlier
+     applicants keep a contested mentor unless a later mentee beats their
+     fit by more than seniority_buffer_pct). Pairs land in `Proposed
+     Matches` as `proposed`.
+   - While `auto_send_compacts` is FALSE (review period), the committee
+     sets each pair to `admin-approved` by hand; compacts then go out
+     automatically. Set it TRUE and fresh pairs are approved + compacted
+     the same night with no committee click.
+   - Signing the compact IS accepting the match: when both sign, the pair
+     activates and both get the introduction email. Compacts unsigned for
+     compact_expiry_days expire: signers return to the pool, non-signers
+     park as `unresponsive`.
    - Mentor capacity: a mentor stays in the pool until their count of
      matches in status {admin-approved, compact-sent, compact-signed,
      active} reaches their `mentor_slots`.
@@ -34,7 +41,6 @@ const APPLICATIONS_SHEET_INDEX = 0; // applications must stay the first tab
 const MATCHES_SHEET = 'Proposed Matches';
 const SETTINGS_SHEET = 'Settings';
 const NEVER_MATCH_SHEET = 'Never Match';
-const PROFILE_LINKS_SHEET = 'Profile Links';
 const COMPACTS_SHEET = 'Compacts';
 const SURVEYS_SHEET = 'Surveys';
 // Drive folder holding 'Mentor Toolkit.pdf' and 'Mentee Toolkit.pdf' to
@@ -72,22 +78,17 @@ const RANK_WEIGHTS = [0.35, 0.25, 0.20, 0.12, 0.08];
 
 // Match statuses the committee owns; regeneration never deletes these.
 const PRESERVED_MATCH_STATUSES = [
-  'sent',   // profiles are out with both parties - a 2-week round is running
-  'mutual-interest', 'admin-approved', 'compact-sent', 'compact-signed',
+  'admin-approved', 'compact-sent', 'compact-signed',
   'active', 'completed', 'terminated-early', 'declined'
-];
-// Rows in the approval/compact funnel; people in one are never round-expired.
-const FUNNEL_STATUSES = [
-  'mutual-interest', 'admin-approved', 'compact-sent', 'compact-signed', 'active'
 ];
 
 // Dropdown-chip option lists, applied as data validation by setup.
 const APPLICANT_STATUS_OPTIONS = [
-  'submitted', 'accepted', 'reviewing-matches', 'unresponsive',
+  'submitted', 'accepted', 'unresponsive',
   'matched-pending', 'matched', 'graduated', 'declined', 'withdrawn'
 ];
 const MATCH_STATUS_OPTIONS = [
-  'proposed', 'sent', 'mutual-interest', 'admin-approved', 'compact-sent',
+  'proposed', 'admin-approved', 'compact-sent',
   'compact-signed', 'active', 'completed', 'terminated-early',
   'declined', 'expired', 'held-below-threshold'
 ];
@@ -117,11 +118,12 @@ const DEFAULT_SETTINGS = [
   ['allow_same_institution', 'FALSE', 'TRUE bypasses the same-institution filter (§6.7)'],
   ['consumer_email_domains', 'gmail.com, outlook.com, hotmail.com, yahoo.com, icloud.com, proton.me, protonmail.com', 'Domains ignored by the shared-domain heuristic'],
   ['match_threshold_percent', 50, 'Below this, pair is written as held-below-threshold (§7)'],
-  ['max_candidates_per_mentee', 3, 'Top-N candidates proposed per mentee (§6.5)'],
-  ['reminder_after_days', 7, 'One reminder email after this many days without a response (profiles, compacts, surveys)'],
+  ['seniority_buffer_pct', 20, 'An earlier-applied mentee keeps a contested mentor unless a later mentee beats their fit by more than this many points'],
+  ['auto_send_compacts', 'FALSE', 'FALSE = committee reviews each proposed pair and sets admin-approved by hand (review period). TRUE = proposed pairs are auto-approved and compacts go out the same night'],
+  ['compact_expiry_days', 14, 'Unsigned compacts expire after this many days: non-signers park as unresponsive, signers return to the pool'],
+  ['reminder_after_days', 7, 'One reminder email after this many days without a response (compacts, surveys)'],
   ['stalled_after_days', 14, 'Digest flags a person as unresponsive after this many days'],
-  ['match_round_days', 14, 'A blinded-profiles round lasts this long; then no-mutual responders return to the pool and non-responders are flagged unresponsive'],
-  ['pool_wait_flag_days', 14, 'Digest flags accepted applicants who have waited in the pool this long with nothing sent'],
+  ['pool_wait_flag_days', 14, 'Digest flags accepted applicants who have waited in the pool this long with no match proposed'],
   ['checkin_after_days', 180, '6-month check-in survey goes out this many days after match_start'],
   ['closeout_after_days', 365, '12-month closeout survey goes out this many days after match_start']
 ];
@@ -170,8 +172,7 @@ function setupMentorshipSystem() {
 
   // 4b. Token-tracked tabs: Profile Links, Compacts, Surveys. Header rows
   //     are re-written on every setup run so column additions migrate.
-  [[PROFILE_LINKS_SHEET, PROFILE_LINK_HEADERS],
-   [COMPACTS_SHEET, COMPACT_HEADERS],
+  [[COMPACTS_SHEET, COMPACT_HEADERS],
    [SURVEYS_SHEET, SURVEY_HEADERS]].forEach(function (spec) {
     let sh = ss.getSheetByName(spec[0]);
     if (!sh) { sh = ss.insertSheet(spec[0]); sh.setFrozenRows(1); }
@@ -238,8 +239,6 @@ function applyDropdown_(sheet, colIndex1, options) {
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Mentorship')
     .addItem('Generate matches now', 'generateMatchesFromMenu')
-    .addItem('Send blinded profiles to MENTEE of selected row', 'sendProfilesToMentee')
-    .addItem('Send blinded profiles to MENTOR of selected row', 'sendProfilesToMentor')
     .addItem('Run full daily pipeline now (incl. digest)', 'sendDigestFromMenu')
     .addItem('Snapshot backup now', 'weeklySnapshot')
     .addSeparator()
@@ -262,28 +261,44 @@ function sendDigestFromMenu() {
 
 // The daily pipeline, in deliberate order:
 //   0. pool bookkeeping (stamp/clear pool_entered_at timers)
-//   1. retire matched people from the pool (so step 5 never re-proposes them)
-//   2. detect mutual interest from submitted picks
-//   3. close expired 2-week rounds (responders return to the pool with an
-//      email; non-responders parked as 'unresponsive' for admin review)
-//   4. lifecycle: compacts out for admin-approved pairs, activation + intro
+//   1. retire matched people from the pool (so step 4 never re-proposes them)
+//   2. expire compacts unsigned past compact_expiry_days (signers return to
+//      the pool with an email; non-signers parked as 'unresponsive')
+//   3. lifecycle: compacts out for admin-approved pairs, activation + intro
 //      email when both have signed, reminders, stall detection, surveys
-//   5. generate fresh matches on the reduced pool
-//   6. auto-send blinded profiles to everyone with new proposals, starting
-//      their 2-week round and taking them out of the pool
-//   7. one digest email covering all of it
+//   4. generate fresh matches: ONE best-fit pair per mentee (earlier
+//      applicants keep a contested mentor unless beaten by >buffer points)
+//   5. if auto_send_compacts is TRUE: auto-approve the fresh pairs and send
+//      their compacts immediately; otherwise they wait as 'proposed' for
+//      the committee to set admin-approved (review period)
+//   6. one digest email covering all of it
 function nightlyMatchRun() {
   poolBookkeeping_();
   const retired = retireMatchedFromPool_();
-  const mutual = detectMutualInterest_();
-  const rounds = resolveExpiredRounds_();
+  const expiry = resolveExpiredCompacts_();
   const lifecycle = progressLifecycle_();
   const result = generateMatches();
-  const roundsStarted = autoSendProfiles_();
+  const auto = maybeAutoApprove_(result);
   sendCommitteeDigest(result, {
-    retired: retired, mutual: mutual, rounds: rounds,
-    lifecycle: lifecycle, roundsStarted: roundsStarted
+    retired: retired, expiry: expiry, lifecycle: lifecycle, auto: auto
   });
+}
+
+// Review-period gate: while auto_send_compacts is FALSE, fresh pairs sit as
+// 'proposed' until the committee sets them to admin-approved by hand. Flip
+// the setting to TRUE once you trust the matcher, and fresh pairs are
+// approved and get their compact emails the same night.
+function maybeAutoApprove_(result) {
+  if (!result.settings.auto_send_compacts) return { approved: [], compactsSent: [] };
+  const m = matchRows_();
+  const approved = [];
+  m.rows.forEach(function (r, i) {
+    if (String(r[mcol_('status')]).trim().toLowerCase() !== 'proposed') return;
+    m.sheet.getRange(i + 2, mcol_('status') + 1).setValue('admin-approved');
+    approved.push(String(r[mcol_('pair_key')]));
+  });
+  const compactsSent = approved.length ? sendCompactsForApproved_() : [];
+  return { approved: approved, compactsSent: compactsSent };
 }
 
 /* ---------------- Data access ---------------- */
@@ -299,11 +314,13 @@ function getSettings() {
   }
   ['weight_topic_overlap', 'weight_focus_overlap', 'secondary_topic_weight',
    'locality_window_hours', 'match_threshold_percent',
-   'max_candidates_per_mentee', 'reminder_after_days', 'stalled_after_days',
-   'checkin_after_days', 'closeout_after_days', 'match_round_days',
+   'seniority_buffer_pct', 'compact_expiry_days',
+   'reminder_after_days', 'stalled_after_days',
+   'checkin_after_days', 'closeout_after_days',
    'pool_wait_flag_days'
   ].forEach(function (k) { out[k] = Number(out[k]); });
   out.allow_same_institution = String(out.allow_same_institution).toUpperCase() === 'TRUE';
+  out.auto_send_compacts = String(out.auto_send_compacts).toUpperCase() === 'TRUE';
   out.consumer_email_domains = String(out.consumer_email_domains)
     .split(',').map(function (d) { return d.trim().toLowerCase(); }).filter(String);
   return out;
@@ -514,6 +531,8 @@ function generateMatches() {
     const proposals = [];
     let held = 0;
 
+    // Score every eligible pair once.
+    const allPairs = [];
     mentees.forEach(function (mentee) {
       // A mentee with a slot-consuming match is already taken care of.
       const menteeTaken = preserved.some(function (r) {
@@ -523,7 +542,6 @@ function generateMatches() {
       if (menteeTaken) return;
 
       const window = localityWindow(mentee, settings);
-      const scored = [];
       mentors.forEach(function (mentor) {
         const pairKey = mentee.email + '|' + mentor.email;
         if (retiredPairs[pairKey] || neverMatch.pairs[mentee.email + '|' + mentor.email]) return;
@@ -535,35 +553,52 @@ function generateMatches() {
         const sFocus = focusScore(mentee, mentor);
         const total = settings.weight_topic_overlap * sTopic +
                       settings.weight_focus_overlap * sFocus;
-        scored.push({
-          mentor: mentor, delta: delta, conflict: conflict,
-          sTopic: sTopic, sFocus: sFocus, total: total,
-          slotsLeft: mentor.slots - (slotUse[mentor.email] || 0),
+        allPairs.push({
+          mentee: mentee, mentor: mentor, delta: delta, conflict: conflict,
+          sTopic: sTopic, sFocus: sFocus, pct: Math.round(total * 100),
           pairKey: pairKey
         });
       });
+    });
 
-      scored.sort(function (x, y) {
-        if (y.total !== x.total) return y.total - x.total;
-        const dx = x.delta === null ? 99 : x.delta, dy = y.delta === null ? 99 : y.delta;
-        if (dx !== dy) return dx - dy;
-        if (y.slotsLeft !== x.slotsLeft) return y.slotsLeft - x.slotsLeft;
-        return x.mentor.email < y.mentor.email ? -1 : 1;
-      });
+    const proposalRow = function (c, status) {
+      return [
+        now, c.mentee.email, c.mentee.name, c.mentor.email, c.mentor.name,
+        c.pct, round2(c.sTopic), round2(c.sFocus),
+        c.delta === null ? 'unknown' : c.delta,
+        c.conflict ? 'FLAG' : '',
+        status, '', c.pairKey, ''
+      ];
+    };
 
-      scored.slice(0, settings.max_candidates_per_mentee).forEach(function (c) {
-        const pct = Math.round(c.total * 100);
-        const below = pct < settings.match_threshold_percent;
-        if (below) held++;
-        proposals.push([
-          now, mentee.email, mentee.name, c.mentor.email, c.mentor.name,
-          pct, round2(c.sTopic), round2(c.sFocus),
-          c.delta === null ? 'unknown' : c.delta,
-          c.conflict ? 'FLAG' : '',
-          below ? 'held-below-threshold' : 'proposed',
-          '', c.pairKey, ''   // committee_notes, pair_key, match_start
-        ]);
-      });
+    // One-to-one assignment: repeatedly take the best remaining pair, but
+    // let an EARLIER-applied mentee take that mentor when their own fit is
+    // within seniority_buffer_pct points of it. One match per mentee; each
+    // assignment consumes one mentor slot.
+    const assigned = assignOneToOne_(
+      allPairs.filter(function (p) { return p.pct >= settings.match_threshold_percent; }),
+      slotUse, settings.seniority_buffer_pct);
+    assigned.forEach(function (c) { proposals.push(proposalRow(c, 'proposed')); });
+
+    // Below-threshold pairs: write the top few per unassigned mentee so the
+    // committee can hand-pick from them (§7 manual below-threshold matches).
+    const assignedMentees = {};
+    assigned.forEach(function (c) { assignedMentees[c.mentee.email] = true; });
+    const heldByMentee = {};
+    allPairs.forEach(function (p) {
+      if (p.pct >= settings.match_threshold_percent) return;
+      if (assignedMentees[p.mentee.email]) return;
+      if (!heldByMentee[p.mentee.email]) heldByMentee[p.mentee.email] = [];
+      heldByMentee[p.mentee.email].push(p);
+    });
+    Object.keys(heldByMentee).forEach(function (email) {
+      heldByMentee[email]
+        .sort(function (a, b) { return b.pct - a.pct; })
+        .slice(0, 3)
+        .forEach(function (p) {
+          held++;
+          proposals.push(proposalRow(p, 'held-below-threshold'));
+        });
     });
 
     // Rewrite the sheet: header + preserved + fresh proposals.
@@ -588,6 +623,48 @@ function generateMatches() {
 }
 
 function round2(x) { return Math.round(x * 100) / 100; }
+
+// Greedy one-to-one assignment with an application-date courtesy: take the
+// highest-scoring remaining pair, then hand that mentor to the EARLIEST-
+// applied unassigned mentee whose own fit with them is within bufferPct
+// points of that top score. A later applicant only jumps the queue by
+// beating the earlier one's fit by more than the buffer.
+function assignOneToOne_(pairs, existingSlotUse, bufferPct) {
+  const slotUse = {};
+  Object.keys(existingSlotUse || {}).forEach(function (k) { slotUse[k] = existingSlotUse[k]; });
+  const pool = pairs.filter(function (p) {
+    return (slotUse[p.mentor.email] || 0) < p.mentor.slots;
+  });
+  const appliedAt = function (p) {
+    const t = new Date(p.mentee.timestamp).getTime();
+    return isNaN(t) ? Number.MAX_VALUE : t;
+  };
+  const assigned = [];
+  while (pool.length) {
+    let best = pool[0];
+    pool.forEach(function (p) { if (p.pct > best.pct) best = p; });
+    const mentorEmail = best.mentor.email;
+    let winner = best;
+    pool.forEach(function (p) {
+      if (p.mentor.email !== mentorEmail) return;
+      if (p.pct < best.pct - bufferPct) return;
+      if (appliedAt(p) < appliedAt(winner) ||
+          (appliedAt(p) === appliedAt(winner) && p.pct > winner.pct)) {
+        winner = p;
+      }
+    });
+    assigned.push(winner);
+    slotUse[mentorEmail] = (slotUse[mentorEmail] || 0) + 1;
+    const mentorFull = slotUse[mentorEmail] >= winner.mentor.slots;
+    for (let i = pool.length - 1; i >= 0; i--) {
+      if (pool[i].mentee.email === winner.mentee.email ||
+          (mentorFull && pool[i].mentor.email === mentorEmail)) {
+        pool.splice(i, 1);
+      }
+    }
+  }
+  return assigned;
+}
 
 /* ---------------- Committee digest (§7) ---------------- */
 
@@ -661,23 +738,30 @@ function sendCommitteeDigest(result, extra) {
     rounds.unresponsive.forEach(function (s) { lines.push('  - ' + s); });
   }
   // ---- Lifecycle sections (present when the full pipeline ran) ----
-  const pairLabel = function (r) {
-    return r[mcol_('mentee_name')] + ' <-> ' + r[mcol_('mentor_name')] +
-      ' (' + r[mcol_('score_total_pct')] + '% fit)';
-  };
-  const mut = extra.mutual || {};
-  const sug = mut.suggestion || { assigned: [], conflicted: [] };
-  if ((mut.newlyMutual || []).length || sug.assigned.length || sug.conflicted.length) {
+  const auto = extra.auto || { approved: [], compactsSent: [] };
+  if (auto.approved.length) {
     lines.push('');
-    lines.push('MUTUAL INTEREST - ready for committee approval:');
-    if (sug.assigned.length) {
-      lines.push('  Suggested assignment (fit-maximizing within mentor slots) - set these to admin-approved:');
-      sug.assigned.forEach(function (r) { lines.push('    - ' + pairLabel(r)); });
-    }
-    if (sug.conflicted.length) {
-      lines.push('  Also mutual, but conflicts with the suggestion (mentee or mentor slot already used):');
-      sug.conflicted.forEach(function (r) { lines.push('    - ' + pairLabel(r)); });
-    }
+    lines.push('AUTO-APPROVED (auto_send_compacts is TRUE) - compacts sent the same night:');
+    auto.approved.forEach(function (pk) { lines.push('  - ' + pk); });
+  } else if (result.written) {
+    lines.push('');
+    lines.push('PROPOSED PAIRS AWAITING YOUR APPROVAL - set each row to admin-approved to send its compacts.');
+    lines.push('(Once you trust the matcher, set auto_send_compacts to TRUE in Settings to skip this step.)');
+    result.proposals.forEach(function (p) {
+      if (String(p[10]) !== 'proposed') return;
+      lines.push('  - ' + p[2] + ' <-> ' + p[4] + ' (' + p[5] + '% fit)');
+    });
+  }
+  const exp = extra.expiry || {};
+  if ((exp.returned || []).length) {
+    lines.push('');
+    lines.push('COMPACT EXPIRED - they signed but the counterpart never did; back in the pool (emailed):');
+    exp.returned.forEach(function (s) { lines.push('  - ' + s); });
+  }
+  if ((exp.unresponsive || []).length) {
+    lines.push('');
+    lines.push('COMPACT EXPIRED - never signed, newly parked as unresponsive:');
+    exp.unresponsive.forEach(function (s) { lines.push('  - ' + s); });
   }
   const life = extra.lifecycle || {};
   if ((life.compactsSent || []).length) {
@@ -711,19 +795,17 @@ function sendCommitteeDigest(result, extra) {
   lines.push('Review everything here: ' + SpreadsheetApp.getActiveSpreadsheet().getUrl());
 
   // Skip the email only when there is truly nothing to say.
-  const lifecycleNews = (mut.newlyMutual || []).length || (life.compactsSent || []).length ||
+  const lifecycleNews = (life.compactsSent || []).length ||
     (life.activated || []).length || (life.reminders || []).length ||
     (life.stalled || []).length || (life.surveysSent || []).length ||
-    (extra.retired || []).length;
-  const roundNews = (extra.roundsStarted || []).length ||
-    ((extra.rounds || {}).returned || []).length ||
-    ((extra.rounds || {}).unresponsive || []).length;
+    (extra.retired || []).length || auto.approved.length ||
+    (exp.returned || []).length || (exp.unresponsive || []).length;
   if (!result.written && !submitted.length && !poolWaiting.length &&
-      !unresponsiveParked.length && !lifecycleNews && !roundNews) return;
+      !unresponsiveParked.length && !lifecycleNews) return;
 
   sendMail_(DIGEST_EMAIL,
     'Mentorship digest: ' + result.written + ' new proposal(s), ' +
-    (sug.assigned.length ? sug.assigned.length + ' mutual match(es) to approve, ' : '') +
+    (auto.approved.length ? auto.approved.length + ' auto-approved, ' : '') +
     submitted.length + ' awaiting review',
     lines.join('\n'), DIGEST_EMAIL);
 }
@@ -738,175 +820,6 @@ function sendMail_(to, subject, body, replyTo) {
   });
 }
 
-/* ---------------- Blinded profile pages (§5.2) ----------------
-   Committee selects a row in "Proposed Matches" and uses the Mentorship
-   menu to send that applicant an email linking to
-   <MENTORSHIP_SITE_URL>matches.html?t=<secret token>. The page calls doGet() below,
-   which serves that person's anonymized candidate set as JSON and records
-   the picks they submit back. Names, affiliations, emails, and free text
-   never leave the server. */
-
-const PROFILE_LINK_HEADERS = [
-  'token', 'role', 'email', 'name', 'payload_json',
-  'created_at', 'sent_at', 'viewed_at', 'responded_at', 'picks', 'reminders'
-];
-
-const COMPACT_HEADERS = [
-  'token', 'pair_key', 'role', 'email', 'name', 'counterpart_email',
-  'sent_at', 'viewed_at', 'signed_at', 'signed_name', 'reminders'
-];
-
-const SURVEY_HEADERS = [
-  'token', 'pair_key', 'wave', 'role', 'email', 'name',
-  'sent_at', 'viewed_at', 'responded_at', 'reminders', 'answers_json'
-];
-
-function sendProfilesToMentee() { sendProfiles_('mentee'); }
-function sendProfilesToMentor() { sendProfiles_('mentor'); }
-
-function sendProfiles_(side) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getActiveSheet();
-  if (sheet.getName() !== MATCHES_SHEET) {
-    notify_('Select a row in the "' + MATCHES_SHEET + '" tab first, then rerun this menu item.');
-    return;
-  }
-  const rowIndex = sheet.getActiveRange().getRow();
-  if (rowIndex < 2 || rowIndex > sheet.getLastRow()) {
-    notify_('Select a data row (not the header) in "' + MATCHES_SHEET + '".');
-    return;
-  }
-  const emailCol = MATCH_HEADERS.indexOf(side === 'mentee' ? 'mentee_email' : 'mentor_email') + 1;
-  const targetEmail = String(sheet.getRange(rowIndex, emailCol).getValue()).trim().toLowerCase();
-  if (!targetEmail) { notify_('That row has no ' + side + ' email.'); return; }
-
-  const sent = startRound_(side, targetEmail);
-  notify_(sent
-    ? 'Sent ' + sent + ' blinded profile(s) to ' + targetEmail + '; their 2-week round has started.'
-    : 'No rows in status "proposed" or "sent" for ' + targetEmail + ' - nothing to send.');
-}
-
-// Send (or re-send) someone's blinded profiles, freeze their proposal rows
-// as 'sent', and take them out of the pool ('reviewing-matches') for the
-// duration of the round. Returns the number of candidates sent, 0 if none.
-function startRound_(side, targetEmail) {
-  const result = buildCandidatePayload_(side, targetEmail);
-  if (!result.candidates.length) return 0;
-
-  const token = upsertProfileLink_(side, targetEmail, result.name, result.candidates);
-  const link = MENTORSHIP_SITE_URL + 'matches.html?t=' + token;
-  const counterpart = side === 'mentee' ? 'mentor' : 'mentee';
-
-  sendMail_(targetEmail,
-    MENTORSHIP_PROGRAM + ' - your blinded ' + counterpart + ' candidates',
-    'Hi ' + (result.name || 'there') + ',\n\n' +
-    'Good news - the matching committee has candidate ' + counterpart + 's for you. ' +
-    'Names and affiliations stay hidden until both sides agree to a pairing.\n\n' +
-    'View your candidates and make your picks here:\n' + link + '\n\n' +
-    'Please respond within two weeks - after that, this round closes and the ' +
-    'candidates may be matched elsewhere.\n\n' +
-    'This link is personal to you - please don\'t forward it. If anything looks ' +
-    'off, just reply to this email.\n\n' +
-    '- The ISEV-SNEV Mentorship Committee',
-    DIGEST_EMAIL);
-
-  // Freeze this person's live proposal rows for the round.
-  const m = matchRows_();
-  const emailCol = mcol_(side === 'mentee' ? 'mentee_email' : 'mentor_email');
-  m.rows.forEach(function (r, i) {
-    if (String(r[emailCol]).trim().toLowerCase() !== targetEmail) return;
-    if (String(r[mcol_('status')]).trim().toLowerCase() === 'proposed') {
-      m.sheet.getRange(i + 2, mcol_('status') + 1).setValue('sent');
-    }
-  });
-  updateApplicant_(targetEmail, side, { status: 'reviewing-matches', pool_entered_at: '' });
-  return result.candidates.length;
-}
-
-// Candidates for a mentee are its proposed mentors, and vice versa.
-function buildCandidatePayload_(side, targetEmail) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(MATCHES_SHEET);
-  const rows = sheet.getLastRow() > 1
-    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, MATCH_HEADERS.length).getValues()
-    : [];
-  const col = function (name) { return MATCH_HEADERS.indexOf(name); };
-
-  const applicants = readApplicants();
-  const byKey = {};
-  applicants.forEach(function (a) { byKey[a.email + '|' + a.role] = a; });
-  const me = byKey[targetEmail + '|' + side] || {};
-
-  const candidates = [];
-  rows.forEach(function (r) {
-    const st = String(r[col('status')]).trim().toLowerCase();
-    if (st !== 'proposed' && st !== 'sent') return;
-    const rowMentee = String(r[col('mentee_email')]).trim().toLowerCase();
-    const rowMentor = String(r[col('mentor_email')]).trim().toLowerCase();
-    if ((side === 'mentee' ? rowMentee : rowMentor) !== targetEmail) return;
-
-    const otherRole = side === 'mentee' ? 'mentor' : 'mentee';
-    const otherEmail = side === 'mentee' ? rowMentor : rowMentee;
-    const other = byKey[otherEmail + '|' + otherRole];
-    if (!other) return;
-
-    const prefix = otherRole === 'mentor' ? 'M-' : 'T-';
-    candidates.push({
-      code: prefix + shortHash_(String(r[col('pair_key')])),
-      pair_key: String(r[col('pair_key')]),        // server-side only; stripped before serving
-      fit: Number(r[col('score_total_pct')]) || 0,
-      stage: other.stage || '',
-      experience: otherRole === 'mentor' ? (other.experience || '') : '',
-      topics: (other.primary || []).slice().sort(function (a, b) { return a.rank - b.rank; })
-        .map(function (t) { return TOPIC_LABELS[t.topic] || t.topic; }),
-      focus: other.focus || [],
-      languages: other.languages || '',
-      tz: formatOffset_(other.timezone),
-      delta: r[col('offset_delta_hours')] === 'unknown' ? null : Number(r[col('offset_delta_hours')])
-    });
-  });
-  candidates.sort(function (a, b) { return b.fit - a.fit; });
-  return { candidates: candidates, name: me.name || '' };
-}
-
-function shortHash_(s) {
-  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, s);
-  let out = '';
-  for (let i = 0; i < 2; i++) {
-    out += ('0' + ((bytes[i] + 256) % 256).toString(16)).slice(-2);
-  }
-  return out.toUpperCase();
-}
-
-function formatOffset_(tz) {
-  const o = TZ_OFFSETS[tz];
-  if (o === undefined) return 'unspecified';
-  return 'UTC' + (o >= 0 ? '+' : '-') + Math.abs(o);
-}
-
-// One live link per (role, email): re-sending refreshes the payload but
-// keeps the same token, so earlier emails keep working.
-function upsertProfileLink_(role, email, name, candidates) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(PROFILE_LINKS_SHEET);
-  if (!sheet) throw new Error('Run Setup first: "' + PROFILE_LINKS_SHEET + '" tab is missing.');
-  const now = new Date().toISOString();
-  const payload = JSON.stringify(candidates);
-
-  if (sheet.getLastRow() > 1) {
-    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROFILE_LINK_HEADERS.length).getValues();
-    for (let i = 0; i < rows.length; i++) {
-      if (String(rows[i][1]) === role && String(rows[i][2]).toLowerCase() === email) {
-        sheet.getRange(i + 2, 5).setValue(payload);       // payload_json
-        sheet.getRange(i + 2, 7).setValue(now);           // sent_at
-        return String(rows[i][0]);
-      }
-    }
-  }
-  const token = Utilities.getUuid().replace(/-/g, '');
-  sheet.appendRow([token, role, email, name, payload, now, now, '', '', '', 0]);
-  return token;
-}
 
 /* --------- doGet: JSON API for matches.html ---------
    GET ?action=profiles&t=<token>          -> the candidate set (anonymized)
@@ -926,8 +839,6 @@ function jsonReply_(obj) {
 function doGet(e) {
   const p = (e && e.parameter) || {};
   try {
-    if (p.action === 'profiles') return serveProfiles_(p);
-    if (p.action === 'interest') return recordInterest_(p);
     if (p.action === 'compact') return serveCompact_(p);
     if (p.action === 'sign') return signCompact_(p);
     if (p.action === 'survey') return serveSurvey_(p);
@@ -938,66 +849,6 @@ function doGet(e) {
   }
 }
 
-function findProfileLinkRow_(token) {
-  if (!token || String(token).length < 16) return null;
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PROFILE_LINKS_SHEET);
-  if (!sheet || sheet.getLastRow() < 2) return null;
-  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROFILE_LINK_HEADERS.length).getValues();
-  for (let i = 0; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(token)) return { sheet: sheet, index: i + 2, values: rows[i] };
-  }
-  return null;
-}
-
-function serveProfiles_(p) {
-  const hit = findProfileLinkRow_(p.t);
-  if (!hit) return jsonReply_({ ok: false, error: 'invalid_link' });
-  hit.sheet.getRange(hit.index, 8).setValue(new Date().toISOString()); // viewed_at
-  const candidates = JSON.parse(hit.values[4] || '[]').map(function (c) {
-    return {
-      code: c.code, fit: c.fit, stage: c.stage, experience: c.experience,
-      topics: c.topics, focus: c.focus, languages: c.languages,
-      tz: c.tz, delta: c.delta
-    }; // pair_key deliberately omitted
-  });
-  return jsonReply_({
-    ok: true,
-    role: hit.values[1],
-    name: String(hit.values[3] || '').split(' ')[0],
-    candidates: candidates,
-    picks: String(hit.values[9] || '')
-  });
-}
-
-function recordInterest_(p) {
-  const hit = findProfileLinkRow_(p.t);
-  if (!hit) return jsonReply_({ ok: false, error: 'invalid_link' });
-  const payload = JSON.parse(hit.values[4] || '[]');
-  const valid = {};
-  payload.forEach(function (c) { valid[c.code] = c; });
-  const picks = String(p.picks || '').split(',')
-    .map(function (s) { return s.trim(); })
-    .filter(function (s) { return valid[s]; });
-  if (!picks.length) return jsonReply_({ ok: false, error: 'no_valid_picks' });
-
-  const now = new Date().toISOString();
-  hit.sheet.getRange(hit.index, 9).setValue(now);              // responded_at
-  hit.sheet.getRange(hit.index, 10).setValue(picks.join(', ')); // picks
-
-  const who = hit.values[3] + ' <' + hit.values[2] + '> (' + hit.values[1] + ')';
-  const lines = [who + ' submitted picks:', ''];
-  picks.forEach(function (code) {
-    lines.push('  ' + code + ' -> pair ' + valid[code].pair_key +
-               ' (' + valid[code].fit + '% fit)');
-  });
-  lines.push('');
-  lines.push('Mark reciprocal interest in the Sheet: ' +
-             SpreadsheetApp.getActiveSpreadsheet().getUrl());
-  sendMail_(DIGEST_EMAIL,
-    MENTORSHIP_PROGRAM + ' - picks from ' + hit.values[2],
-    lines.join('\n'), String(hit.values[2]));
-  return jsonReply_({ ok: true, recorded: picks });
-}
 
 /* ---------------- Lifecycle automation ----------------
    Statuses on the applications sheet:
@@ -1114,201 +965,6 @@ function poolBookkeeping_() {
 // Step 6 (after generation): start a round for every pool member who has
 // fresh 'proposed' rows - both mentees and mentors get their blinded
 // profiles automatically, exactly once per round.
-function autoSendProfiles_() {
-  const m = matchRows_();
-  const neverMatch = readNeverMatch();
-  // People with live rows ('proposed', or 'sent' when the counterpart's
-  // round was started manually and this side never got theirs) who are
-  // still marked accepted need a round started.
-  const byPerson = {};  // 'role|email' -> true
-  m.rows.forEach(function (r) {
-    const st = String(r[mcol_('status')]).trim().toLowerCase();
-    if (st !== 'proposed' && st !== 'sent') return;
-    byPerson['mentee|' + String(r[mcol_('mentee_email')]).trim().toLowerCase()] = true;
-    byPerson['mentor|' + String(r[mcol_('mentor_email')]).trim().toLowerCase()] = true;
-  });
-  const applicants = readApplicants();
-  const started = [];
-  applicants.forEach(function (a) {
-    if (a.status !== 'accepted' || neverMatch.banned[a.email]) return;
-    if (!byPerson[a.role + '|' + a.email]) return;
-    const n = startRound_(a.role, a.email);
-    if (n) started.push(a.role + ' ' + a.email + ' (' + n + ' candidate(s))');
-  });
-  return started;
-}
-
-// Step 2b: close rounds older than match_round_days. Responders with no
-// mutual match return to the pool (with an email and a fresh pool timer);
-// non-responders are parked as 'unresponsive' until an admin intervenes.
-// Their frozen 'sent' rows become 'expired' (swept by the next generation,
-// so unconsumed pairings can legitimately reappear in future rounds).
-function resolveExpiredRounds_() {
-  const settings = getSettings();
-  const now = Date.now();
-  const report = { returned: [], unresponsive: [] };
-  const applicants = readApplicants().filter(function (a) {
-    return a.status === 'reviewing-matches';
-  });
-  if (!applicants.length) return report;
-
-  const links = tokenSheetRows_(PROFILE_LINKS_SHEET, PROFILE_LINK_HEADERS);
-  const linkByPerson = {};
-  links.rows.forEach(function (r) {
-    linkByPerson[String(r[1]) + '|' + String(r[2]).toLowerCase()] = r;
-  });
-  const m = matchRows_();
-
-  applicants.forEach(function (a) {
-    const link = linkByPerson[a.role + '|' + a.email];
-    if (!link) return;
-    const sentAt = new Date(String(link[6])).getTime();
-    if (isNaN(sentAt) || (now - sentAt) / 86400000 < settings.match_round_days) return;
-
-    // Anyone already in the mutual/approval/compact funnel is not expired.
-    const emailCol = mcol_(a.role === 'mentee' ? 'mentee_email' : 'mentor_email');
-    const inFunnel = m.rows.some(function (r) {
-      return String(r[emailCol]).trim().toLowerCase() === a.email &&
-        FUNNEL_STATUSES.indexOf(String(r[mcol_('status')]).trim().toLowerCase()) !== -1;
-    });
-    if (inFunnel) return;
-
-    const responded = !!String(link[8]);   // responded_at
-
-    // Which pairs did this person actively pick?
-    const pickedPairs = {};
-    if (responded && String(link[9])) {
-      const byCode = {};
-      try { JSON.parse(link[4] || '[]').forEach(function (c) { byCode[c.code] = c.pair_key; }); } catch (e) {}
-      String(link[9]).split(',').forEach(function (code) {
-        const pk = byCode[code.trim()];
-        if (pk) pickedPairs[pk] = true;
-      });
-    }
-
-    // Close out this person's frozen round rows: a pair they responded to
-    // but did NOT pick is a soft decline (never re-proposed); everything
-    // else merely expires and may legitimately reappear in a future round.
-    m.rows.forEach(function (r, i) {
-      if (String(r[emailCol]).trim().toLowerCase() !== a.email) return;
-      const current = String(r[mcol_('status')]).trim().toLowerCase();
-      if (current !== 'sent' && current !== 'expired') return;
-      const pk = String(r[mcol_('pair_key')]);
-      const closed = (responded && !pickedPairs[pk]) ? 'declined' : 'expired';
-      // 'declined' (a responder passed on this pair) always wins over a
-      // plain expiry, whichever side of the pair resolves first.
-      if (current === 'sent' || closed === 'declined') {
-        m.sheet.getRange(i + 2, mcol_('status') + 1).setValue(closed);
-        r[mcol_('status')] = closed;
-      }
-    });
-    if (responded) {
-      updateApplicant_(a.email, a.role, {
-        status: 'accepted', pool_entered_at: new Date().toISOString()
-      });
-      sendMail_(a.email,
-        MENTORSHIP_PROGRAM + ' - back in the matching pool',
-        'Hi ' + (a.name || 'there') + ',\n\n' +
-        'Thanks for reviewing your candidate matches. A mutual match did not ' +
-        'come together in this round - that is normal, especially early in a ' +
-        'cycle, and it is no reflection on your application.\n\n' +
-        'You are back in the matching pool as of today. The matcher runs ' +
-        'nightly as new ' + (a.role === 'mentee' ? 'mentors' : 'mentees') + ' join, ' +
-        'and you can expect to hear from us again within 1-2 weeks.\n\n' +
-        'Questions any time - just reply to this email.\n\n' +
-        '- The ISEV-SNEV Mentorship Committee');
-      report.returned.push(a.role + ' ' + a.email);
-    } else {
-      updateApplicant_(a.email, a.role, { status: 'unresponsive', pool_entered_at: '' });
-      report.unresponsive.push(a.role + ' ' + a.email);
-    }
-  });
-  return report;
-}
-
-// Step 2: a pair is mutual when the mentee's picks and the mentor's picks
-// (from their Profile Links responses) both include this pair. Such rows
-// move from 'proposed' to 'mutual-interest' for the committee to approve.
-// When picks collide (e.g. two mentees mutually matched with a one-slot
-// mentor), suggestOptimalAssignment_ proposes the fit-maximizing subset.
-function detectMutualInterest_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const links = ss.getSheetByName(PROFILE_LINKS_SHEET);
-  const pickedPairs = { mentee: {}, mentor: {} };
-  if (links && links.getLastRow() > 1) {
-    links.getRange(2, 1, links.getLastRow() - 1, PROFILE_LINK_HEADERS.length)
-      .getValues().forEach(function (r) {
-        const role = String(r[1]), picks = String(r[9] || '');
-        if (!picks || !pickedPairs[role]) return;
-        const byCode = {};
-        try {
-          JSON.parse(r[4] || '[]').forEach(function (c) { byCode[c.code] = c.pair_key; });
-        } catch (e) { return; }
-        picks.split(',').forEach(function (code) {
-          const pk = byCode[code.trim()];
-          if (pk) pickedPairs[role][pk] = true;
-        });
-      });
-  }
-
-  const m = matchRows_();
-  const newlyMutual = [];
-  const mutualRows = [];
-  m.rows.forEach(function (r, i) {
-    const st = String(r[mcol_('status')]).trim().toLowerCase();
-    const pk = String(r[mcol_('pair_key')]);
-    const isMutual = pickedPairs.mentee[pk] && pickedPairs.mentor[pk];
-    if ((st === 'sent' || st === 'proposed') && isMutual) {
-      m.sheet.getRange(i + 2, mcol_('status') + 1).setValue('mutual-interest');
-      newlyMutual.push(r);
-      mutualRows.push(r);
-    } else if (st === 'mutual-interest') {
-      mutualRows.push(r);
-    }
-  });
-
-  return {
-    newlyMutual: newlyMutual,
-    suggestion: suggestOptimalAssignment_(mutualRows, m.rows)
-  };
-}
-
-// Greedy fit-maximizing assignment across mutual-interest pairs, respecting
-// one match per mentee and each mentor's remaining slots. Greedy on sorted
-// scores is a solid committee suggestion; final say stays human.
-function suggestOptimalAssignment_(mutualRows, allRows) {
-  const slotUse = {};
-  allRows.forEach(function (r) {
-    const st = String(r[mcol_('status')]).trim().toLowerCase();
-    if (SLOT_CONSUMING_STATUSES.indexOf(st) !== -1) {
-      const me = String(r[mcol_('mentor_email')]).toLowerCase();
-      slotUse[me] = (slotUse[me] || 0) + 1;
-    }
-  });
-  const applicants = readApplicants();
-  const mentorSlots = {};
-  applicants.forEach(function (a) { if (a.role === 'mentor') mentorSlots[a.email] = a.slots; });
-
-  const sorted = mutualRows.slice().sort(function (a, b) {
-    return Number(b[mcol_('score_total_pct')]) - Number(a[mcol_('score_total_pct')]);
-  });
-  const menteeTaken = {}, assigned = [], conflicted = [];
-  sorted.forEach(function (r) {
-    const mentee = String(r[mcol_('mentee_email')]).toLowerCase();
-    const mentor = String(r[mcol_('mentor_email')]).toLowerCase();
-    const free = (mentorSlots[mentor] || 1) - (slotUse[mentor] || 0);
-    if (!menteeTaken[mentee] && free > 0) {
-      menteeTaken[mentee] = true;
-      slotUse[mentor] = (slotUse[mentor] || 0) + 1;
-      assigned.push(r);
-    } else {
-      conflicted.push(r);
-    }
-  });
-  return { assigned: assigned, conflicted: conflicted };
-}
-
-// Step 3: move approved pairs through compact -> activation -> surveys,
 // with one reminder per artifact and stall flags for the digest.
 function progressLifecycle_() {
   const settings = getSettings();
@@ -1321,19 +977,7 @@ function progressLifecycle_() {
   const m = matchRows_();
 
   // 3a. admin-approved -> send compacts + toolkits to both, mark compact-sent
-  m.rows.forEach(function (r, i) {
-    if (String(r[mcol_('status')]).trim().toLowerCase() !== 'admin-approved') return;
-    const pk = String(r[mcol_('pair_key')]);
-    [['mentee', 'mentee_email', 'mentee_name', 'mentor_email'],
-     ['mentor', 'mentor_email', 'mentor_name', 'mentee_email']].forEach(function (side) {
-      const token = upsertCompact_(pk, side[0], String(r[mcol_(side[1])]).toLowerCase(),
-        String(r[mcol_(side[2])]), String(r[mcol_(side[3])]).toLowerCase());
-      sendCompactEmail_(String(r[mcol_(side[1])]), String(r[mcol_(side[2])]), token);
-      sendToolkitEmail_(String(r[mcol_(side[1])]), String(r[mcol_(side[2])]), side[0]);
-    });
-    m.sheet.getRange(i + 2, mcol_('status') + 1).setValue('compact-sent');
-    report.compactsSent.push(pk);
-  });
+  report.compactsSent = sendCompactsForApproved_();
 
   // 3b. compact-sent -> active when both parties have signed
   const compacts = tokenSheetRows_(COMPACTS_SHEET, COMPACT_HEADERS);
@@ -1353,21 +997,15 @@ function progressLifecycle_() {
   });
 
   // 3c. reminders (one each) + stall flags, across all token artifacts
-  const applicantStatus = {};
-  readApplicants().forEach(function (a) {
-    applicantStatus[a.role + '|' + a.email] = a.status;
+  const pairStatus = {};
+  m.rows.forEach(function (r) {
+    pairStatus[String(r[mcol_('pair_key')])] = String(r[mcol_('status')]).trim().toLowerCase();
   });
   const artifacts = [
-    { name: 'blinded profiles', sheet: PROFILE_LINKS_SHEET, headers: PROFILE_LINK_HEADERS,
-      sentCol: 6, doneCol: 8, remCol: 10, emailCol: 2, nameCol: 3,
-      // Only nag while that person's round is actually open.
-      skip: function (r) {
-        return applicantStatus[String(r[1]) + '|' + String(r[2]).toLowerCase()] !== 'reviewing-matches';
-      },
-      link: function (t) { return MENTORSHIP_SITE_URL + 'matches.html?t=' + t; },
-      what: 'your blinded candidate matches' },
     { name: 'compact', sheet: COMPACTS_SHEET, headers: COMPACT_HEADERS,
       sentCol: 6, doneCol: 8, remCol: 10, emailCol: 3, nameCol: 4,
+      // Only nag while the pair is actually waiting on signatures.
+      skip: function (r) { return pairStatus[String(r[1])] !== 'compact-sent'; },
       link: function (t) { return MENTORSHIP_SITE_URL + 'compact.html?t=' + t; },
       what: 'the Mentorship Program Compact (your match is waiting on your signature)' },
     { name: 'survey', sheet: SURVEYS_SHEET, headers: SURVEY_HEADERS,
@@ -1436,6 +1074,85 @@ function progressLifecycle_() {
   return report;
 }
 
+// Send compact + toolkit emails to both sides of every admin-approved pair
+// and advance those rows to compact-sent. Idempotent; called from the
+// lifecycle step and again right after auto-approval so compacts go out the
+// same night the pair is made.
+function sendCompactsForApproved_() {
+  const m = matchRows_();
+  const sentFor = [];
+  m.rows.forEach(function (r, i) {
+    if (String(r[mcol_('status')]).trim().toLowerCase() !== 'admin-approved') return;
+    const pk = String(r[mcol_('pair_key')]);
+    [['mentee', 'mentee_email', 'mentee_name', 'mentor_email'],
+     ['mentor', 'mentor_email', 'mentor_name', 'mentee_email']].forEach(function (side) {
+      const token = upsertCompact_(pk, side[0], String(r[mcol_(side[1])]).toLowerCase(),
+        String(r[mcol_(side[2])]), String(r[mcol_(side[3])]).toLowerCase());
+      sendCompactEmail_(String(r[mcol_(side[1])]), String(r[mcol_(side[2])]), token);
+      sendToolkitEmail_(String(r[mcol_(side[1])]), String(r[mcol_(side[2])]), side[0]);
+    });
+    m.sheet.getRange(i + 2, mcol_('status') + 1).setValue('compact-sent');
+    sentFor.push(pk);
+  });
+  return sentFor;
+}
+
+// Compacts unsigned past compact_expiry_days close out: the pair expires,
+// anyone who DID sign returns to the pool (fresh timer + explanatory email),
+// anyone who didn't is parked as 'unresponsive' until an admin re-accepts
+// them or bans them via the Never Match tab.
+function resolveExpiredCompacts_() {
+  const settings = getSettings();
+  const now = Date.now();
+  const report = { returned: [], unresponsive: [] };
+  const m = matchRows_();
+  const compacts = tokenSheetRows_(COMPACTS_SHEET, COMPACT_HEADERS);
+  const byPair = {};
+  compacts.rows.forEach(function (r) {
+    const pk = String(r[1]);
+    if (!byPair[pk]) byPair[pk] = [];
+    byPair[pk].push(r);
+  });
+
+  m.rows.forEach(function (r, i) {
+    if (String(r[mcol_('status')]).trim().toLowerCase() !== 'compact-sent') return;
+    const pk = String(r[mcol_('pair_key')]);
+    const rows = byPair[pk] || [];
+    if (!rows.length) return;
+    const signedCount = rows.filter(function (c) { return String(c[8]); }).length;
+    if (signedCount >= 2) return;   // activation handles this
+    const oldest = Math.min.apply(null, rows.map(function (c) {
+      const t = new Date(String(c[6])).getTime();
+      return isNaN(t) ? now : t;
+    }));
+    if ((now - oldest) / 86400000 < settings.compact_expiry_days) return;
+
+    m.sheet.getRange(i + 2, mcol_('status') + 1).setValue('expired');
+    rows.forEach(function (c) {
+      const email = String(c[3]).toLowerCase(), role = String(c[2]), name = String(c[4]);
+      if (String(c[8])) {   // they signed; counterpart never did
+        updateApplicant_(email, role, {
+          status: 'accepted', pool_entered_at: new Date().toISOString()
+        });
+        sendMail_(email,
+          MENTORSHIP_PROGRAM + ' - back in the matching pool',
+          'Hi ' + (name || 'there') + ',\n\n' +
+          'Unfortunately your proposed match did not confirm within the two-week ' +
+          'window - that happens sometimes, and it is no reflection on you.\n\n' +
+          'You are back in the matching pool as of today, and you can expect to ' +
+          'hear from us again within 1-2 weeks.\n\n' +
+          'Questions any time - just reply to this email.\n\n' +
+          '- The ISEV-SNEV Mentorship Committee');
+        report.returned.push(role + ' ' + email);
+      } else {
+        updateApplicant_(email, role, { status: 'unresponsive', pool_entered_at: '' });
+        report.unresponsive.push(role + ' ' + email);
+      }
+    });
+  });
+  return report;
+}
+
 function activatePair_(sheet, rowIndex, r) {
   const today = new Date().toISOString().slice(0, 10);
   sheet.getRange(rowIndex, mcol_('status') + 1).setValue('active');
@@ -1493,6 +1210,15 @@ function sendToolkitEmail_(email, name, role) {
       attachment ? { attachments: [attachment] } : {}));
 }
 
+function formatOffset_(tz) {
+  const o = TZ_OFFSETS[tz];
+  if (o === undefined) return 'unspecified';
+  return 'UTC' + (o >= 0 ? '+' : '-') + Math.abs(o);
+}
+
+// One live link per (role, email): re-sending refreshes the payload but
+// keeps the same token, so earlier emails keep working.
+
 /* ---- generic token-sheet helpers (Compacts / Surveys) ---- */
 
 function tokenSheetRows_(sheetName, headers) {
@@ -1546,8 +1272,38 @@ function serveCompact_(p) {
     role: String(hit.values[2]),
     name: String(hit.values[4]),
     signed: !!String(hit.values[8]),
-    signed_name: String(hit.values[9] || '')
+    signed_name: String(hit.values[9] || ''),
+    match: blindedCounterpart_(String(hit.values[1]),
+      String(hit.values[2]), String(hit.values[5]).toLowerCase())
   });
+}
+
+// Blinded summary of the person's proposed match for the compact page:
+// fit and profile facts only - never name, affiliation, email, or free text.
+function blindedCounterpart_(pairKey, myRole, counterpartEmail) {
+  const otherRole = myRole === 'mentee' ? 'mentor' : 'mentee';
+  const applicants = readApplicants();
+  let other = null;
+  applicants.forEach(function (a) {
+    if (a.role === otherRole && a.email === counterpartEmail) other = a;
+  });
+  if (!other) return null;
+  let fit = null;
+  matchRows_().rows.forEach(function (r) {
+    if (String(r[mcol_('pair_key')]) === pairKey) fit = Number(r[mcol_('score_total_pct')]) || null;
+  });
+  return {
+    role: otherRole,
+    fit: fit,
+    stage: other.stage || '',
+    experience: otherRole === 'mentor' ? (other.experience || '') : '',
+    topics: (other.primary || []).slice()
+      .sort(function (a, b) { return a.rank - b.rank; })
+      .map(function (t) { return TOPIC_LABELS[t.topic] || t.topic; }),
+    focus: other.focus || [],
+    languages: other.languages || '',
+    tz: formatOffset_(other.timezone)
+  };
 }
 
 function signCompact_(p) {

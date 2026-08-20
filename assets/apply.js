@@ -414,6 +414,21 @@
       return;
     }
 
+    // ISEV membership is required to participate
+    const membershipEl = form.querySelector('select[name="membership"]');
+    const membership = membershipEl ? membershipEl.value : "";
+    if (membership !== "ISEV only" && membership !== "Both") {
+      statusEl.classList.add("error");
+      statusEl.textContent =
+        "Active ISEV membership is required to apply. If you're not a member yet, " +
+        "join at isev.org and come back - we'd love to have you.";
+      if (membershipEl) {
+        membershipEl.focus();
+        membershipEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return;
+    }
+
     // Require at least one primary career topic
     const primaryCount = rankedTierPayload("primary").length;
     if (primaryCount < 1) {

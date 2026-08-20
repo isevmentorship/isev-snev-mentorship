@@ -21,11 +21,12 @@ Total time: about 5 minutes.
 - Every night (~2am) and on demand, it scores every accepted mentee against
   every accepted mentor using the two-tier topic algorithm, the focus-area
   overlap, the ±5-hour time-zone filter (widened if the mentee said they're
-  flexible), and the same-institution filter. It writes up to the top 3
-  candidates per mentee to a **`Proposed Matches`** tab.
-- It emails the committee a **digest**: new proposals, applicants awaiting
-  review, and anyone who has waited 30+ days with no candidate (the §7
-  escalations).
+  flexible), and the same-institution filter - then assigns each mentee ONE
+  best-fit mentor (earlier applicants keep a contested mentor unless beaten
+  by more than the seniority buffer) and writes the pair to a
+  **`Proposed Matches`** tab.
+- It emails the committee a **digest**: pairs awaiting approval, compact
+  progress, expirations, surveys, and anyone waiting too long in the pool.
 - Every Monday (~4am) it copies the whole spreadsheet into a Drive folder
   **`ISEV-SNEV Mentorship Backups`**, keeping the most recent 26 copies
   (six months).
@@ -35,9 +36,9 @@ Total time: about 5 minutes.
 Because matching **re-runs from scratch every night over the whole accepted
 pool**, the "no suitable match today, but a good mentor joins next week"
 case is handled automatically: the next run sees the new mentor and proposes
-the pair. Nobody has to remember to re-assess. Pairs the committee has already
-advanced (to `mutual-interest`, `admin-approved`, `active`, etc.) are preserved
-across runs and never regenerated; only fresh `proposed` rows are recomputed.
+the pair. Nobody has to remember to re-assess. Pairs already advanced (to `admin-approved`, `compact-sent`, `active`, etc.)
+are preserved across runs and never regenerated; only fresh `proposed` rows
+are recomputed.
 A mentor stays in the pool until the number of their matches in an approved/
 active state reaches the `mentor_slots` they chose.
 
@@ -71,141 +72,87 @@ That's it. The engine is live and will run nightly.
 1. **Review new applications.** New rows arrive with a blank status. Read the
    application; set `status` to `accepted` to admit, or `declined` /
    `withdrawn` otherwise. (The nightly digest lists everyone awaiting review.)
-2. **Read the proposals.** Look at the `Proposed Matches` tab. Each row has a
-   fit percentage, the topic and focus sub-scores, the time-zone gap, and an
-   `institution_flag` if the pair looks same-institution.
-3. **Advance a pair.** When both sides are interested and the committee
-   approves, change that row's `status` from `proposed` to `mutual-interest`,
-   then `admin-approved` / `active` as you go. Those rows are then locked in -
-   regeneration won't touch or duplicate them, and each one consumes one of
-   the mentor's slots.
+2. **Read the proposed pairs.** Look at the `Proposed Matches` tab. Each row
+   has a fit percentage, the topic and focus sub-scores, the time-zone gap,
+   and an `institution_flag` if the pair looks same-institution.
+3. **Approve a pair** by changing its status from `proposed` to
+   `admin-approved` (only during the review period - once
+   `auto_send_compacts` is TRUE this happens automatically). Everything after
+   that is hands-off: compacts, activation, introduction, surveys.
 4. **Retire a pair.** Set a proposal's status to `declined` to stop it from
    being re-proposed on the next run.
 
-### Sending blinded profiles (the applicant-facing step)
+### The one-to-one flow (how a match happens)
 
-When a mentee (or mentor) should see their candidates:
-
-1. In the **Proposed Matches** tab, click any row belonging to that person.
-2. **Mentorship -> Send blinded profiles to MENTEE of selected row** (or the
-   MENTOR variant).
-3. The engine snapshots all of that person's `proposed` rows into an
-   anonymized candidate set, mints a personal secret link, and emails it to
-   them. The link opens **matches.html on the site** - blinded cards showing
-   fit %, career stage, ranked topics, focus areas, languages, and time-zone
-   gap. No names, affiliations, emails, or free text.
-4. The applicant selects up to 3 candidates and submits. Their picks are
-   written to the **Profile Links** tab (with viewed/responded timestamps)
-   and the committee gets an email mapping each anonymous code back to the
-   real pair, with a link to the Sheet.
-5. When both sides of a pair have picked each other, set that row's status
-   to `mutual-interest` and proceed as usual.
-
-Re-sending to the same person refreshes their candidate set but keeps the
-same link. Privacy note: the link is a capability URL - anyone holding it can
-see that person's *anonymized* candidate set, which is why the payload never
-includes identifying fields. Applicants are told not to forward it.
-
-**Deployment requirement:** this feature adds a `doGet` function, which is
-served through the web-app deployment. After pasting the updated
-`matching_engine.gs`, you must also redeploy in place: **Deploy -> Manage
-deployments -> edit (pencil) -> Version: New version -> Deploy**. Same URL,
-new code. Until you do, matches.html links will show "This link isn't valid."
+1. **The matcher assigns one pair.** Each nightly run pairs every pooled
+   mentee with their single best-fit mentor. When two mentees contest the
+   same mentor, the earlier applicant keeps them unless the later one's fit
+   is more than `seniority_buffer_pct` (default 20) points higher. Pairs land
+   in Proposed Matches as `proposed`.
+2. **Approval.** While `auto_send_compacts` (Settings) is FALSE - the review
+   period - the committee looks at each proposed pair and sets it to
+   `admin-approved` by hand; the digest lists exactly what is waiting. Once
+   you trust the matcher, set it to TRUE and fresh pairs are auto-approved
+   with compacts sent the same night, no committee click.
+3. **The compact IS the acceptance.** Both parties get a personal signing
+   link (compact.html) showing a blinded summary of their match - fit %,
+   career stage, ranked topics, focus areas, languages, time zone; never a
+   name or affiliation - plus their toolkit email. Signing accepts the
+   match. Views, signatures, and reminders are tracked in the Compacts tab.
+4. **Activation.** The moment the second signature lands, the pair goes
+   `active`, `match_start` is stamped, and the introduction email with real
+   names goes to both. Surveys follow at 6 and 12 months.
+5. **Expiry.** A compact unsigned after `compact_expiry_days` (default 14)
+   expires the pair: whoever signed returns to the pool (fresh timer, an
+   explanatory email); whoever didn't is parked as `unresponsive` until an
+   admin re-accepts them or bans them (Never Match tab - a row with ONE
+   email and the second column blank is a full ban; two emails still bar
+   just that pair).
 
 ### Overrides you control from the Sheet
 
-- **`Settings` tab** - every tunable number from ARCHITECTURE.md §4.7:
-  scoring weights, the 50% hold threshold, the locality window, the 30-day
-  escalation windows, how many candidates to propose per mentee, and
-  `allow_same_institution` (set to `TRUE` to disable the institution filter
-  for a run).
-- **`Never Match` tab** - add two emails on a row to permanently bar a pairing
-  (§6.8), e.g. a direct supervisor relationship.
+
+- **`Settings` tab** - every tunable knob: scoring weights, the 50% hold
+  threshold, the locality window, the seniority buffer, the compact expiry
+  and reminder windows, `auto_send_compacts` (the review-period gate), and
+  `allow_same_institution`.
+- **`Never Match` tab** - two emails on a row permanently bar that pairing;
+  ONE email with the second column blank bans that address from matching
+  entirely.
 
 ---
 
-## Lifecycle automation (the daily pipeline)
 
-The nightly trigger runs a full pipeline, in this order:
+## The daily pipeline (order matters)
 
-0. **Pool bookkeeping.** Everyone with status `accepted` carries a
-   `pool_entered_at` timer; it re-stamps automatically whenever someone
-   (re-)enters the pool.
-1. **Pool retirement.** People in an admin-approved or active pair get their
-   applications-sheet `status` flipped to `matched-pending` (compact phase)
-   or `matched` (active), with counterpart email(s) in `matched_with`.
-   Mentors only retire when ALL their `mentor_slots` are consumed. This runs
-   FIRST, so the matcher below never re-proposes someone who is taken.
-2. **Mutual-interest detection.** When both sides' blinded-profile picks
-   include the same pair, that Proposed Matches row flips to
-   `mutual-interest` automatically. When picks collide (two mentees mutually
-   matched to a one-slot mentor), the digest shows a fit-maximizing
-   **suggested assignment** plus the conflicting alternates - approving stays
-   a human decision: the committee sets the winning rows to `admin-approved`.
-2b. **Round expiry (the 2-week window).** Blinded-profile rounds last
-   `match_round_days` (default 14). When a round closes with no mutual match:
-   - **Responders return to the pool** (`accepted`, fresh pool timer) and get
-     an email explaining that no match came together this round and they can
-     expect to hear back within 1-2 weeks. Candidates they responded to but
-     did NOT pick become `declined` pairs (never re-proposed); the rest
-     `expire` and may legitimately reappear in a future round.
-   - **Non-responders are parked as `unresponsive`** and stay out of matching
-     until an admin sets them back to `accepted` - or bans them by adding
-     their email to the **Never Match** tab with the second column left blank
-     (a single-email row is a full ban; two emails still bar just that pair).
-3. **Compacts and activation.** Every `admin-approved` row automatically
-   emails BOTH parties a personal compact-signing link
-   (`compact.html?t=...`, view/sign tracked in the **Compacts** tab) plus a
-   toolkit email (attaches `Mentor Toolkit.pdf` / `Mentee Toolkit.pdf` from a
-   Drive folder named **Mentorship Toolkits** - create it once and drop the
-   two PDFs in), and the row moves to `compact-sent`. The moment the second
-   signature lands, the pair is **activated automatically**: intro email with
-   real names to both, `match_start` stamped, row -> `active`. No committee
-   action needed between "approved" and "introduced".
-4. **Fresh match generation** on the reduced pool.
-4b. **Automatic blinded-profile sends.** Everyone in the pool who received
-   new proposals - mentees AND mentors - automatically gets their blinded
-   candidates email the same run. That starts their 2-week round and moves
-   their status to `reviewing-matches`, which excludes them from further
-   match generation until the round resolves. Nobody is emailed daily: one
-   send per round, one reminder at day 7. (The manual "Send blinded
-   profiles" menu items still exist for re-sends and special cases; they
-   plug into the same round machinery.)
-5. **Reminders and stall flags.** One reminder email per artifact (blinded
-   profiles, compact, survey) after `reminder_after_days` (default 7) with no
-   response; anyone silent past `stalled_after_days` (default 14) appears in
-   the digest under "UNRESPONSIVE 2+ WEEKS". Separately, anyone sitting in
-   the pool `pool_wait_flag_days` (default 14) with nothing sent is flagged
-   so admins can reach out with expected dates or hand-pick a
-   below-threshold match (the held rows are visible in Proposed Matches).
-6. **Surveys.** `checkin_after_days` (default 180) after `match_start`, both
-   parties get the 6-month check-in (`survey.html`); at `closeout_after_days`
-   (default 365), the 12-month closeout survey (questions from
-   CLOSEOUT_SURVEY.md). Views, responses, and answers land in the **Surveys**
-   tab (`answers_json`), and each response is also emailed to the committee.
-7. **One digest email** covering all of it, with a direct link to the Sheet.
+0. **Pool bookkeeping** - `pool_entered_at` timers stamp/reset automatically.
+1. **Pool retirement** - people in approved/active pairs leave the pool
+   (`matched-pending` / `matched`, counterpart in `matched_with`); mentors
+   only when all `mentor_slots` are consumed.
+2. **Compact expiry** - see above.
+3. **Lifecycle** - compacts out for admin-approved pairs, activation + intro
+   when both signed, one reminder per artifact after `reminder_after_days`,
+   stall flags after `stalled_after_days`, 6/12-month surveys.
+4. **Match generation** - one-to-one assignment on the reduced pool;
+   below-threshold candidates are written as `held-below-threshold` for
+   manual committee matching.
+5. **Auto-approval** - only if `auto_send_compacts` is TRUE.
+6. **Digest** - proposed pairs awaiting approval (or auto-approved list),
+   compact expirations, activations, surveys, reminders, stalls, applicants
+   waiting `pool_wait_flag_days`+ in the pool with nothing proposed, and
+   parked unresponsive people, with a direct Sheet link.
 
-The Mentorship menu's "Run full daily pipeline now" does the same on demand.
+**Status cheat-sheet (Proposed Matches):** `proposed` (matcher) ->
+`admin-approved` (committee, or automatic once auto_send_compacts=TRUE) ->
+`compact-sent` (auto) -> `active` (auto on both signatures) -> `completed`
+(committee). `expired` = compact window lapsed (swept and re-matchable);
+`declined` = permanently retired pair; `held-below-threshold` = visible for
+manual matching.
 
-**One-time setup for this feature set:** re-paste `matching_engine.gs`, run
-`setupMentorshipSystem` (creates the Compacts and Surveys tabs, adds the
-`matched_with` column, migrates headers), redeploy the web app in place, and
-create the **Mentorship Toolkits** Drive folder with the two PDFs (named
-exactly `Mentor Toolkit.pdf` and `Mentee Toolkit.pdf`).
+**Status cheat-sheet (applications):** `submitted` (blank) -> `accepted`
+(committee) -> `matched-pending` (auto, compact phase) -> `matched` (auto,
+active) - or `unresponsive` (auto, didn't sign in time; admin decides).
 
-**Status cheat-sheet (Proposed Matches):** `proposed` (generated) -> `sent`
-(auto: profiles out, 2-week round running) -> `mutual-interest` (auto) ->
-`admin-approved` (committee, the ONE manual gate) -> `compact-sent` (auto) ->
-`active` (auto on both signatures) -> `completed` (committee, after the
-closeout). Rounds that close without a mutual match leave rows as `expired`
-(may be re-proposed later) or `declined` (a responder passed on the pair;
-never re-proposed). `held-below-threshold` as before.
-
-**Status cheat-sheet (applications sheet):** `submitted` (blank) ->
-`accepted` (committee) -> `reviewing-matches` (auto, round running) -> back
-to `accepted` (auto, round closed without a match) or `unresponsive` (auto,
-no reply in 2 weeks; admin decides) -> `matched-pending` (auto, compact
-phase) -> `matched` (auto, active pair). `declined`/`withdrawn` as before.
 
 ## Updating the engine later
 

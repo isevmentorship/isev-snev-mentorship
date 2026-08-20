@@ -26,6 +26,31 @@
     </div>
   </header>
 
+  <div id="cycleBanner" style="background:#0f2a44;color:#fff;text-align:center;padding:0.45rem 1rem;font-size:0.92rem;" hidden></div>
+  <script>
+    (function () {
+      var now = new Date(), y = now.getFullYear();
+      function fmt(d) { return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }); }
+      // Application windows: April 15 - May 15 and October 1 - 15, yearly.
+      var windows = [
+        { start: new Date(y, 3, 15), end: new Date(y, 4, 15, 23, 59, 59) },
+        { start: new Date(y, 9, 1), end: new Date(y, 9, 15, 23, 59, 59) }
+      ];
+      var open = null, next = null;
+      for (var i = 0; i < windows.length; i++) {
+        if (now >= windows[i].start && now <= windows[i].end) { open = windows[i]; break; }
+        if (now < windows[i].start && !next) next = windows[i];
+      }
+      if (!open && !next) next = { start: new Date(y + 1, 3, 15), end: new Date(y + 1, 4, 15) };
+      var el = document.getElementById('cycleBanner');
+      el.hidden = false;
+      el.textContent = open
+        ? 'Applications are open - this window closes ' + fmt(open.end) + '.'
+        : 'Applications are currently closed. Next window: ' + fmt(next.start) + ' - ' + fmt(next.end) +
+          (next.start.getFullYear() > y ? ', ' + next.start.getFullYear() : '') + '.';
+    })();
+  </script>
+
   <main>
 
     <!-- HERO -->
@@ -56,7 +81,7 @@
       <div class="container split">
         <div>
           <h4>About the program</h4>
-          <h2>A human-first alternative to speed-networking.</h2>
+          <h2>Mentorship, matched with care.</h2>
           <p>
             Early- and mid-career researchers often know <em>what</em> they want to work
             on - grant-writing, navigating a postdoc-to-PI transition, moving between
@@ -67,11 +92,11 @@
           </p>
           <p>
             Applications are reviewed by a small committee drawn from ISEV and SNEV.
-            Once accepted, each participant receives one to three blinded candidate
-            matches generated from their application. When both parties agree, the
-            committee re-confirms the match, identities are revealed, and both
-            sides sign a short program compact that sets expectations for the
-            12-month relationship.
+            Once accepted, our matcher pairs each mentee with their single
+            best-fit mentor - scored on ranked career topics, EV focus areas,
+            and time zone. Both sides confirm the still-blinded match by
+            signing a short program compact; identities are revealed once both
+            have signed, and the 12-month relationship begins.
           </p>
         </div>
         <div>
@@ -81,8 +106,8 @@
             <p class="card-meta" style="margin:0">Names, institutions, and photos stay hidden until both sides opt in.</p>
           </div>
           <div class="card" style="margin-bottom:0.9rem;">
-            <h3 style="margin-bottom:0.3rem;">Small, curated match sets</h3>
-            <p class="card-meta" style="margin:0">You will see a few candidates at a time.</p>
+            <h3 style="margin-bottom:0.3rem;">One match at a time</h3>
+            <p class="card-meta" style="margin:0">You are proposed a single best-fit match - no feeds, no browsing, no ranking other people.</p>
           </div>
           <div class="card">
             <h3 style="margin-bottom:0.3rem;">Committee-confirmed</h3>
@@ -103,12 +128,12 @@
             <p>Tell us your role (mentor or mentee), career stage, EV focus area, ranked career topics, time zone, and availability. Takes about 5 minutes.</p>
           </div>
           <div class="card">
-            <h3>See blinded matches</h3>
-            <p>You receive 1-3 anonymized candidate profiles - with names and affiliations redacted.</p>
+            <h3>Get matched</h3>
+            <p>Our matcher pairs you with your single best-fit counterpart, scored on your ranked career topics, EV focus areas, and time zone.</p>
           </div>
           <div class="card">
-            <h3>Choose &amp; sign</h3>
-            <p>If both sides pick each other, the committee re-confirms the pairing, identities are unblinded, and both parties digitally sign the Mentorship Program Compact.</p>
+            <h3>Sign the compact</h3>
+            <p>You see a blinded summary of your match and accept by signing the Mentorship Program Compact online. Once both of you have signed, identities are revealed.</p>
           </div>
           <div class="card">
             <h3>Meet for 12 months</h3>
@@ -140,7 +165,7 @@
             <li>Mentors from underrepresented regions and backgrounds are especially encouraged to apply.</li>
             <li>Prior mentoring experience is not required - we provide a mentor toolkit during onboarding.</li>
           </ul>
-          <p class="card-meta">Active ISEV membership is preferred for mentors.</p>
+          <p class="card-meta">Active ISEV membership is required for mentors.</p>
         </div>
       </div>
     </section>
@@ -151,9 +176,9 @@
         <h4>Apply</h4>
         <h2>Ready to be matched?</h2>
         <p style="max-width:640px;">
-          Applications are open on a rolling basis - there is no deadline.
+          Applications open twice a year: October 1-15 and April 15 - May 15.
           The form takes about 5 minutes and the committee aims to respond
-          within two weeks.
+          within two weeks of the window closing.
         </p>
         <div class="hero-cta">
           <a href="apply.html" class="btn btn-primary">Open the application form</a>
@@ -179,7 +204,7 @@
         <details class="faq">
           <summary>What happens if I don't find a match I like?</summary>
           <div class="faq-body">
-            You can decline all of your blinded matches. Your application returns to the pool and the committee will generate a new set of candidates in the next matching cycle.
+            You'll see a blinded summary of your proposed match when you're asked to sign the compact. If it doesn't feel right, reply to the committee email instead of signing - we'll return you to the pool for the next match run. If your match doesn't confirm within two weeks, you go back into the pool automatically.
           </div>
         </details>
         <details class="faq">
@@ -203,7 +228,7 @@
         <details class="faq">
           <summary>How many mentees can a mentor support?</summary>
           <div class="faq-body">
-            Mentors choose their own support level when applying: 1, 2, or 3 mentees per 12-month cycle. Matches are drawn from a rolling pool, so mentors may be matched with their mentees at different times across the year.
+            Mentors choose their own support level when applying: 1, 2, or 3 mentees per 12-month cycle. Mentors supporting multiple mentees may be paired at different times as application windows run.
           </div>
         </details>
         <details class="faq">

@@ -47,14 +47,24 @@
         </section>
 
         <section id="screen-compact" class="panel" hidden>
-          <h4>Final step before your introduction</h4>
+          <h4>You have a match</h4>
           <h2 id="compactTitle">Mentorship Program Compact</h2>
           <p style="color:var(--muted);max-width:640px;">
-            Both you and your match sign this short agreement. Once both
-            signatures are in, we introduce you by email and your 12-month
-            cycle begins. Keep this page handy - the checklist below is the
-            recommended agenda for your first meeting.
+            The committee has matched you. Signing this short agreement is how
+            you accept: once both of you have signed, identities are revealed,
+            we introduce you by email, and your 12-month cycle begins. Keep
+            this page handy - the checklist below is the recommended agenda
+            for your first meeting. If this match doesn't feel right, reply to
+            the committee email instead of signing.
           </p>
+
+          <div class="card" id="matchCard" hidden style="margin:1rem 0 1.5rem;">
+            <h4 style="margin:0 0 0.6rem;">Your proposed <span id="matchRole">match</span> at a glance
+              <span class="status-pill green" id="matchFit" style="margin-left:0.5rem;"></span></h4>
+            <dl style="display:grid;grid-template-columns:auto 1fr;gap:0.3rem 0.9rem;margin:0;" id="matchFacts"></dl>
+            <div class="tags" id="matchTopics" style="margin-top:0.6rem;"></div>
+            <p class="card-meta" style="margin:0.6rem 0 0;">Name and affiliation stay hidden until you have both signed.</p>
+          </div>
 
           <div class="compact-doc" style="font-size:0.95rem;">
             <p><em>This document details the terms of engagement set by the
@@ -209,6 +219,25 @@
         }
         document.getElementById("roleLabel").textContent = data.role || "participant";
         if (data.name) nameInput.value = data.name;
+        if (data.match) {
+          var m = data.match;
+          var esc = function (s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };
+          document.getElementById("matchRole").textContent = m.role || "match";
+          document.getElementById("matchFit").textContent = m.fit ? m.fit + "% fit" : "";
+          var facts = "";
+          if (m.stage) facts += "<dt style='color:var(--muted);'>Career stage</dt><dd style='margin:0;'>" + esc(m.stage) + "</dd>";
+          if (m.experience) facts += "<dt style='color:var(--muted);'>Mentoring experience</dt><dd style='margin:0;'>" + esc(m.experience) + "</dd>";
+          if (m.languages) facts += "<dt style='color:var(--muted);'>Languages</dt><dd style='margin:0;'>" + esc(m.languages) + "</dd>";
+          if (m.tz) facts += "<dt style='color:var(--muted);'>Time zone</dt><dd style='margin:0;'>" + esc(m.tz) + "</dd>";
+          document.getElementById("matchFacts").innerHTML = facts;
+          var tags = (m.topics || []).map(function (t, i) {
+            return '<span class="tag">' + (i + 1) + ". " + esc(t) + "</span>";
+          }).concat((m.focus || []).map(function (f) {
+            return '<span class="tag">' + esc(f) + "</span>";
+          })).join("");
+          document.getElementById("matchTopics").innerHTML = tags;
+          document.getElementById("matchCard").hidden = false;
+        }
         refresh();
         show("screen-compact");
       })

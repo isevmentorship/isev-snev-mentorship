@@ -322,6 +322,29 @@
     });
   });
 
+  // ----- Immediate membership check -----
+  // ISEV membership is required; flag ineligible selections the moment
+  // they're made rather than waiting for submit.
+  const membershipSelect = form.querySelector('select[name="membership"]');
+  if (membershipSelect) {
+    const warn = document.createElement("span");
+    warn.className = "field-help";
+    warn.style.color = "#b3261e";
+    warn.style.fontWeight = "600";
+    warn.style.display = "none";
+    warn.innerHTML =
+      'A full ISEV membership (junior or senior) is required to apply - ' +
+      '<a href="https://www.isev.org/membership" target="_blank" rel="noopener" ' +
+      'style="color:#b3261e;">join ISEV</a> first, then come back.';
+    membershipSelect.parentElement.appendChild(warn);
+    membershipSelect.addEventListener("change", () => {
+      const bad = membershipSelect.value === "Neither" ||
+                  membershipSelect.value === "SNEV only";
+      warn.style.display = bad ? "block" : "none";
+      membershipSelect.style.borderColor = bad ? "#b3261e" : "";
+    });
+  }
+
   // ----- Serialization -----
   function rankedTierPayload(tier) {
     return currentlyRankedInTier(tier)

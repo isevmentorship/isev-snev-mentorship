@@ -420,8 +420,8 @@
     if (membership !== "ISEV only" && membership !== "Both") {
       statusEl.classList.add("error");
       statusEl.textContent =
-        "Active ISEV membership is required to apply. If you're not a member yet, " +
-        "join at isev.org and come back - we'd love to have you.";
+        "A full ISEV membership (junior or senior) is required to apply. If you're " +
+        "not a member yet, join at isev.org/membership and come back.";
       if (membershipEl) {
         membershipEl.focus();
         membershipEl.scrollIntoView({ behavior: "smooth", block: "center" });

@@ -92,6 +92,16 @@ const MATCH_STATUS_OPTIONS = [
   'compact-signed', 'active', 'completed', 'terminated-early',
   'declined', 'expired', 'held-below-threshold'
 ];
+
+// Column layouts of the token-tracked tabs.
+const COMPACT_HEADERS = [
+  'token', 'pair_key', 'role', 'email', 'name', 'counterpart_email',
+  'sent_at', 'viewed_at', 'signed_at', 'signed_name', 'reminders'
+];
+const SURVEY_HEADERS = [
+  'token', 'pair_key', 'wave', 'role', 'email', 'name',
+  'sent_at', 'viewed_at', 'responded_at', 'reminders', 'answers_json'
+];
 // Statuses that consume a mentor slot (§3.4 mentor capacity rule).
 const SLOT_CONSUMING_STATUSES = [
   'admin-approved', 'compact-sent', 'compact-signed', 'active'

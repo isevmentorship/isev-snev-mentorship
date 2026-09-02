@@ -152,15 +152,24 @@ function setupMentorshipSystem() {
     }
   });
 
-  // 2. Settings tab
+  // 2. Settings tab - created if missing, and any NEW keys are appended on
+  //    every run (existing rows and their values are never touched, so
+  //    committee-tuned numbers survive upgrades).
   let settings = ss.getSheetByName(SETTINGS_SHEET);
   if (!settings) {
     settings = ss.insertSheet(SETTINGS_SHEET);
     settings.getRange(1, 1, 1, 3).setValues([['key', 'value', 'notes']])
       .setFontWeight('bold');
-    settings.getRange(2, 1, DEFAULT_SETTINGS.length, 3).setValues(DEFAULT_SETTINGS);
     settings.setColumnWidths(1, 3, 240);
   }
+  const existingKeys = {};
+  if (settings.getLastRow() > 1) {
+    settings.getRange(2, 1, settings.getLastRow() - 1, 1).getValues()
+      .forEach(function (r) { if (r[0]) existingKeys[String(r[0]).trim()] = true; });
+  }
+  DEFAULT_SETTINGS.forEach(function (row) {
+    if (!existingKeys[row[0]]) settings.appendRow(row);
+  });
 
   // 3. Proposed Matches tab (header row is re-written so upgrades that add
   //    columns, like match_start, migrate existing installs)
@@ -198,7 +207,7 @@ function setupMentorshipSystem() {
   if (settings.getLastRow() > 1) {
     const keys = settings.getRange(2, 1, settings.getLastRow() - 1, 1).getValues();
     keys.forEach(function (k, i) {
-      if (String(k[0]).trim() === 'allow_same_institution') {
+      if (['allow_same_institution', 'auto_send_compacts'].indexOf(String(k[0]).trim()) !== -1) {
         settings.getRange(i + 2, 2).setDataValidation(
           SpreadsheetApp.newDataValidation()
             .requireValueInList(['TRUE', 'FALSE'], true).setAllowInvalid(false).build());

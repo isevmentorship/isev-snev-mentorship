@@ -63,6 +63,7 @@
               <span class="status-pill green" id="matchFit" style="margin-left:0.5rem;"></span></h4>
             <dl style="display:grid;grid-template-columns:auto 1fr;gap:0.3rem 0.9rem;margin:0;" id="matchFacts"></dl>
             <div class="tags" id="matchTopics" style="margin-top:0.6rem;"></div>
+            <p class="card-meta" style="margin:0.6rem 0 0;">Name and affiliation stay hidden until you have both signed.</p>
           </div>
 
           <div class="compact-doc" style="font-size:0.95rem;">
@@ -224,8 +225,6 @@
           document.getElementById("matchRole").textContent = m.role || "match";
           document.getElementById("matchFit").textContent = m.fit ? m.fit + "% fit" : "";
           var facts = "";
-          if (m.name) facts += "<dt style='color:var(--muted);'>Name</dt><dd style='margin:0;'><strong>" + esc(m.name) + "</strong></dd>";
-          if (m.affiliation) facts += "<dt style='color:var(--muted);'>Affiliation</dt><dd style='margin:0;'>" + esc(m.affiliation) + "</dd>";
           if (m.stage) facts += "<dt style='color:var(--muted);'>Career stage</dt><dd style='margin:0;'>" + esc(m.stage) + "</dd>";
           if (m.experience) facts += "<dt style='color:var(--muted);'>Mentoring experience</dt><dd style='margin:0;'>" + esc(m.experience) + "</dd>";
           if (m.languages) facts += "<dt style='color:var(--muted);'>Languages</dt><dd style='margin:0;'>" + esc(m.languages) + "</dd>";

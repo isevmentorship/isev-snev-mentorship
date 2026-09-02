@@ -95,11 +95,10 @@ That's it. The engine is live and will run nightly.
    you trust the matcher, set it to TRUE and fresh pairs are auto-approved
    with compacts sent the same night, no committee click.
 3. **The compact IS the acceptance.** Both parties get a personal signing
-   link (compact.html) showing a summary of their match - name, affiliation,
-   fit %, career stage, ranked topics, focus areas, languages, time zone -
-   plus their toolkit email. Signing accepts the match. Views, signatures,
-   and reminders are tracked in the Compacts tab. (The committee decided
-   against blinding, 2026-09; free-text answers are still never shown.)
+   link (compact.html) showing a blinded summary of their match - fit %,
+   career stage, ranked topics, focus areas, languages, time zone; never a
+   name or affiliation - plus their toolkit email. Signing accepts the
+   match. Views, signatures, and reminders are tracked in the Compacts tab.
 4. **Activation.** The moment the second signature lands, the pair goes
    `active`, `match_start` is stamped, and the introduction email with real
    names goes to both. Surveys follow at 6 and 12 months.

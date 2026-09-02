@@ -1290,8 +1290,8 @@ function serveCompact_(p) {
   });
 }
 
-// Summary of the person's proposed match for the compact page: name,
-// affiliation, and profile facts (no email, no free-text answers).
+// Blinded summary of the person's proposed match for the compact page:
+// fit and profile facts only - never name, affiliation, email, or free text.
 function blindedCounterpart_(pairKey, myRole, counterpartEmail) {
   const otherRole = myRole === 'mentee' ? 'mentor' : 'mentee';
   const applicants = readApplicants();
@@ -1307,8 +1307,6 @@ function blindedCounterpart_(pairKey, myRole, counterpartEmail) {
   return {
     role: otherRole,
     fit: fit,
-    name: other.name || '',
-    affiliation: other.affiliation || '',
     stage: other.stage || '',
     experience: otherRole === 'mentor' ? (other.experience || '') : '',
     topics: (other.primary || []).slice()

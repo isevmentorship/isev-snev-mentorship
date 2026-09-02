@@ -58,7 +58,7 @@
         <p style="color:var(--muted);max-width:640px;">
           Applying takes only a few minutes. Fields marked with <span aria-hidden="true">*</span>
           are required. Your responses are reviewed by a joint ISEV-SNEV committee;
-          you'll hear back within two weeks.
+          you'll hear back within two weeks of the application window closing.
         </p>
         <p style="color:var(--muted);max-width:640px;">
           This is a <strong>professional-development</strong> program. Pairs are expected to meet
@@ -180,7 +180,6 @@
                 Career stage <span class="req" aria-hidden="true">*</span>
                 <select name="career_stage" required>
                   <option value="">Select…</option>
-                  <option>Undergraduate</option>
                   <option>Master's student</option>
                   <option>PhD candidate</option>
                   <option>Postdoc</option>
@@ -411,8 +410,14 @@
             </label>
             <label class="check-row">
               <input type="checkbox" name="consent_unblind" required />
-              <span>I understand that my name and affiliation will remain hidden from potential matches until I have mutually agreed to a pairing.</span>
+              <span>I understand that the profile information in this application will be shared with my proposed match as part of the matching process.</span>
             </label>
+            <p class="field-help" style="margin-top:1rem;">
+              Privacy: your responses are visible only to the ISEV-SNEV matching
+              committee and your proposed match (profile fields only), and are
+              used solely to run the mentorship program. We do not share your
+              information with third parties.
+            </p>
           </fieldset>
 
           <div class="form-actions" id="formActions" hidden>
@@ -427,7 +432,7 @@
           <h2 style="margin-top:0;">Application received.</h2>
           <p>
             Thanks - we've recorded your submission and sent a copy to the ISEV-SNEV
-            matching committee. You'll hear back within two weeks.
+            matching committee. You'll hear back within two weeks of the application window closing.
           </p>
           <p>
             <a href="index.html" class="btn btn-ghost">Back to landing page</a>

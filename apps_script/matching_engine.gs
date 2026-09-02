@@ -145,7 +145,7 @@ function setupMentorshipSystem() {
 
   // 1. status + matched_with + pool_entered_at columns on Applications
   const apps = ss.getSheets()[APPLICATIONS_SHEET_INDEX];
-  ['status', 'matched_with', 'pool_entered_at'].forEach(function (col) {
+  ['status', 'matched_with', 'pool_entered_at', 'flags'].forEach(function (col) {
     const headers = apps.getRange(1, 1, 1, apps.getLastColumn()).getValues()[0];
     if (headers.indexOf(col) === -1) {
       apps.getRange(1, apps.getLastColumn() + 1).setValue(col);
@@ -359,6 +359,7 @@ function readApplicants() {
       affiliation: get('affiliation'),
       timezone: get('timezone'),
       status: (get('status') || 'submitted').toLowerCase(),
+      flags: get('flags'),
       poolEnteredAt: get('pool_entered_at'),
       flex: get('mentee_timezone_flex'),
       slots: Number(get('mentor_slots')) || 1,
@@ -716,7 +717,8 @@ function sendCommitteeDigest(result, extra) {
     lines.push('');
     lines.push('AWAITING REVIEW (' + submitted.length + ') - set status to accepted/declined:');
     submitted.forEach(function (a) {
-      lines.push('  - ' + a.role + ': ' + a.name + ' <' + a.email + '>');
+      lines.push('  - ' + a.role + ': ' + a.name + ' <' + a.email + '>' +
+        (a.flags ? '  *** ' + a.flags + ' ***' : ''));
     });
   }
   if (poolWaiting.length) {
@@ -1288,8 +1290,8 @@ function serveCompact_(p) {
   });
 }
 
-// Blinded summary of the person's proposed match for the compact page:
-// fit and profile facts only - never name, affiliation, email, or free text.
+// Summary of the person's proposed match for the compact page: name,
+// affiliation, and profile facts (no email, no free-text answers).
 function blindedCounterpart_(pairKey, myRole, counterpartEmail) {
   const otherRole = myRole === 'mentee' ? 'mentor' : 'mentee';
   const applicants = readApplicants();
@@ -1305,6 +1307,8 @@ function blindedCounterpart_(pairKey, myRole, counterpartEmail) {
   return {
     role: otherRole,
     fit: fit,
+    name: other.name || '',
+    affiliation: other.affiliation || '',
     stage: other.stage || '',
     experience: otherRole === 'mentor' ? (other.experience || '') : '',
     topics: (other.primary || []).slice()

@@ -114,6 +114,26 @@ function doPost(e) {
 
     data.timestamp = new Date().toISOString();
 
+    // Flag repeat applicants: if this email already has a row anywhere in
+    // the sheet, note it in the flags column and in the committee email so
+    // nobody applies twice unnoticed (returning mentors, re-applications).
+    const emailCol = headers.indexOf('email');
+    let repeatNote = '';
+    if (emailCol !== -1 && data.email && sheet.getLastRow() > 1) {
+      const existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+      const roleCol = headers.indexOf('role'), statusCol = headers.indexOf('status');
+      for (let i = 0; i < existing.length; i++) {
+        if (String(existing[i][emailCol]).trim().toLowerCase() ===
+            String(data.email).trim().toLowerCase()) {
+          repeatNote = 'REPEAT: also row ' + (i + 2) +
+            (roleCol !== -1 && existing[i][roleCol] ? ' (' + existing[i][roleCol] : '(') +
+            (statusCol !== -1 && existing[i][statusCol] ? ', ' + existing[i][statusCol] : '') + ')';
+          break;
+        }
+      }
+    }
+    if (repeatNote) data.flags = repeatNote;
+
     const row = headers.map(function (h) {
       const v = data[h];
       if (v === undefined || v === null) return '';
@@ -137,8 +157,9 @@ function doPost(e) {
     //    can respond with one click.
     GmailApp.sendEmail(
       COMMITTEE_EMAIL,
+      (repeatNote ? 'REPEAT applicant - ' : '') +
       'Mentorship application (' + (data.role || 'unknown') + '): ' + (data.full_name || ''),
-      summary,
+      (repeatNote ? repeatNote + '\n\n' : '') + summary,
       { name: 'ISEV-SNEV Mentorship Committee',
         replyTo: String(data.email || COMMITTEE_EMAIL) }
     );
@@ -151,7 +172,8 @@ function doPost(e) {
         'Hi ' + (data.full_name || 'there') + ',\n\n' +
         'Thanks for applying to the ' + PROGRAM_NAME + ' as a ' +
         (data.role || 'participant') + '. The matching committee will review ' +
-        'your application; you should hear back within two weeks.\n\n' +
+        'your application; you should hear back within two weeks of the\n' +
+          'application window closing.\n\n' +
         'For your records, here is a copy of your answers:\n\n' +
         summary + '\n\n' +
         'If anything looks wrong, just reply to this email.\n\n' +
@@ -191,7 +213,7 @@ function confirmationPage_(data) {
     '<h1 style="color:#0f2a44;margin-top:0;">Application received.</h1>' +
     '<p>Thanks' + name + ' - your application is in. A confirmation with a copy ' +
     'of your answers is on its way to your email, and the committee will be in ' +
-    'touch within two weeks.</p>' +
+    'touch within two weeks of the application window closing.</p>' +
     '<p><a href="' + SITE_URL + '" style="color:#0f2a44;">Back to the program site</a></p>' +
     '</div></body></html>';
 }

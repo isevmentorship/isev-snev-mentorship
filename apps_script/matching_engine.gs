@@ -1237,11 +1237,17 @@ function activatePair_(sheet, rowIndex, r) {
   sheet.getRange(rowIndex, mcol_('match_start') + 1).setValue(today);
   const menteeName = String(r[mcol_('mentee_name')]), mentorName = String(r[mcol_('mentor_name')]);
   const menteeEmail = String(r[mcol_('mentee_email')]), mentorEmail = String(r[mcol_('mentor_email')]);
+  const opts = { name: 'ISEV-SNEV Mentorship Committee', replyTo: DIGEST_EMAIL };
+  try {
+    const pdf = signedCompactPdf_(String(r[mcol_('pair_key')]));
+    if (pdf) opts.attachments = [pdf];
+  } catch (e) { /* attachment is a nicety - never block the introduction */ }
   GmailApp.sendEmail(menteeEmail + ',' + mentorEmail,
     MENTORSHIP_PROGRAM + ' - meet your match!',
     'Dear ' + menteeName + ' and ' + mentorName + ',\n\n' +
     'Both of you have signed the Mentorship Program Compact - your 12-month ' +
-    'mentorship officially starts today.\n\n' +
+    'mentorship officially starts today. A signed copy is attached for your ' +
+    'records.\n\n' +
     '  Mentee: ' + menteeName + ' <' + menteeEmail + '>\n' +
     '  Mentor: ' + mentorName + ' <' + mentorEmail + '>\n\n' +
     'Next step: the mentee schedules the first one-hour video call within the ' +
@@ -1249,8 +1255,68 @@ function activatePair_(sheet, rowIndex, r) {
     'for that first meeting - goals, meeting cadence, and communication ' +
     'preferences.\n\nWe will check in at the 6-month mark. Questions any time: ' +
     'just reply to this email.\n\n- The ISEV-SNEV Mentorship Committee',
-    { name: 'ISEV-SNEV Mentorship Committee', replyTo: DIGEST_EMAIL });
+    opts);
   // Pool status flips (matched-pending -> matched) land on the next daily run.
+}
+
+// Render the compact with both recorded signatures as a PDF blob.
+function signedCompactPdf_(pairKey) {
+  const compacts = tokenSheetRows_(COMPACTS_SHEET, COMPACT_HEADERS);
+  const sigs = { mentor: null, mentee: null };
+  compacts.rows.forEach(function (r) {
+    if (String(r[1]) !== pairKey) return;
+    sigs[String(r[2])] = {
+      name: String(r[9] || r[4]),
+      date: String(r[8]).slice(0, 10)
+    };
+  });
+  const sigRow = function (role) {
+    const x = sigs[role];
+    return '<tr><td>' + role.charAt(0).toUpperCase() + role.slice(1) + '</td><td>' +
+      (x ? x.name : '') + '</td><td>' + (x ? x.date : '') + '</td></tr>';
+  };
+  const html =
+    '<html><head><style>' +
+    'body{font-family:Georgia,serif;font-size:11pt;color:#15202b;margin:36pt;}' +
+    'h1{font-size:16pt;color:#0f2a44;margin:0 0 4pt;}h2{font-size:12pt;color:#0f2a44;margin:14pt 0 4pt;}' +
+    'p,li{line-height:1.45;}ul{margin:4pt 0 8pt 16pt;padding:0;}' +
+    'table{border-collapse:collapse;margin-top:16pt;width:100%;}' +
+    'th,td{border-bottom:1px solid #999;text-align:left;padding:6pt 12pt 6pt 0;font-size:11pt;}' +
+    '</style></head><body>' +
+    '<h1>Mentorship Program Compact</h1>' +
+    '<p><i>ISEV-SNEV Mentorship Program. This document details the terms of engagement set by the ISEV/SNEV Mentorship Program Committee. The checklist should be revisited by the mentor and mentee together during an initial virtual meeting (~1 hour) to confirm expectations and goals align.</i></p>' +
+    '<h2>1. Mentoring goals and objectives</h2><ul>' +
+    '<li><b>Mentor:</b> provide guidance on overarching career development - career transitions, professional networking, job search strategies, communication and leadership, long-term career trajectories in the EV field - avoiding advice on the specifics of current research projects.</li>' +
+    '<li><b>Mentee:</b> identify personal and professional development areas outside immediate research tasks, aligned with your broader career aspirations.</li>' +
+    '<li>Agree on short- and long-term milestones tailored to these career-focused goals.</li></ul>' +
+    '<h2>2. Communication guidelines</h2><ul>' +
+    '<li>Establish a mutually agreed meeting frequency (the program expectation is roughly bi-monthly - every other month - for one year) and preferred channels.</li>' +
+    '<li>Set clear expectations for response times and scheduling flexibility.</li>' +
+    '<li>Define a procedure for rescheduling missed sessions.</li></ul>' +
+    '<h2>3. Roles and responsibilities</h2><ul>' +
+    '<li><b>Mentor:</b> provide guidance based on experience in the EV community; share networking opportunities and best practices.</li>' +
+    '<li><b>Mentee:</b> prepare for meetings with specific questions; actively set the agenda for each meeting.</li>' +
+    '<li>Success depends on both parties\' active participation.</li></ul>' +
+    '<h2>4. Confidentiality and respect</h2><ul>' +
+    '<li>Treat all shared information, research ideas, and personal insights as confidential.</li>' +
+    '<li>Communicate respectfully and constructively in a non-discriminatory, inclusive, supportive environment.</li></ul>' +
+    '<h2>5. Feedback, evaluation, and adaptation</h2><ul>' +
+    '<li>Exchange honest, constructive feedback routinely; schedule periodic check-ins against goals; consider keeping session notes.</li></ul>' +
+    '<h2>6. Ethics and professional standards</h2><ul>' +
+    '<li>Follow the ethical guidelines and code of conduct of the International Society for Extracellular Vesicles (ISEV Bylaws: https://isev.memberclicks.net/assets/ISEV-Bylaws-2025-Revision.pdf).</li>' +
+    '<li>Disclose any potential conflicts of interest that might affect the relationship.</li></ul>' +
+    '<h2>7. Dispute resolution and support</h2><ul>' +
+    '<li>Issues are addressed first between the pair, with mediation from the program committee if needed.</li>' +
+    '<li>Either party may end the relationship with prior discussion to allow a smooth transition.</li></ul>' +
+    '<h2>8. Commitment &amp; sign-off</h2><ul>' +
+    '<li>Both mentor and mentee confirm they have read, understood, and agree to abide by these terms.</li>' +
+    '<li>Participation is voluntary, with a shared commitment to making the relationship as enriching as possible.</li></ul>' +
+    '<table><tr><th>Role</th><th>Signature</th><th>Date signed</th></tr>' +
+    sigRow('mentor') + sigRow('mentee') + '</table>' +
+    '</body></html>';
+  return Utilities.newBlob(html, 'text/html', 'compact.html')
+    .getAs('application/pdf')
+    .setName('ISEV-SNEV Mentorship Program Compact - signed.pdf');
 }
 
 function sendCompactEmail_(email, name, token) {

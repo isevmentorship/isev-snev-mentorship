@@ -20,6 +20,12 @@
       font-size: 0.8rem; padding: 0.2rem 0.6rem; border-radius: 999px;
       border: 1px solid var(--line, #e3e8ef); white-space: nowrap;
     }
+    @media print {
+      .site-header, .site-footer, .sign-box, .btn, #signStatus,
+      #screen-loading, #screen-invalid, #screen-done { display: none !important; }
+      #screen-compact { display: block !important; box-shadow: none; border: none; padding: 0; }
+      body { font-size: 12px; }
+    }
   </style>
 </head>
 <body>
@@ -58,11 +64,12 @@
           <p style="color:var(--muted);max-width:640px;">
             The committee has matched you. Signing this short agreement is how
             you accept: once both of you have signed, we introduce you by
-            email and your 12-month cycle begins. Keep this page handy - the
-            checklist below is the recommended agenda for your first meeting.
-            If this match doesn't feel right, reply to the committee email
-            instead of signing.
+            email and your 12-month cycle begins. Save a copy for your records -
+            the checklist below is the recommended agenda for your first
+            meeting. If this match doesn't feel right, reply to the committee
+            email instead of signing.
           </p>
+          <p><button class="btn btn-ghost btn-small" onclick="window.print()">Save a copy (PDF)</button></p>
 
           <div class="card" id="matchCard" hidden style="margin:1rem 0 1.5rem;">
             <h4 style="margin:0 0 0.6rem;">Your proposed <span id="matchRole">match</span> at a glance
@@ -155,6 +162,7 @@
             you'll both receive an introduction email and the 12-month cycle
             officially begins.
           </p>
+          <p><button class="btn btn-ghost btn-small" onclick="window.print()">Save the compact as a PDF</button></p>
         </section>
 
       </div>

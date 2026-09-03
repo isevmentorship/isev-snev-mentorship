@@ -1189,6 +1189,9 @@ function sendCompactsForApproved_() {
         const token = upsertCompact_(pk, side[0], email, name,
           String(r[mcol_(side[3])]).toLowerCase());
         sendCompactEmail_(String(r[mcol_(side[1])]), name, token);
+        // Space the two sends so the compact email always lands first
+        // in the inbox (same-second sends sort arbitrarily).
+        Utilities.sleep(4000);
         sendToolkitEmail_(String(r[mcol_(side[1])]), name, side[0]);
       } catch (err) {
         sendMail_(DIGEST_EMAIL,

@@ -1159,7 +1159,7 @@ function resolveExpiredCompacts_() {
           MENTORSHIP_PROGRAM + ' - back in the matching pool',
           'Hi ' + (name || 'there') + ',\n\n' +
           'Unfortunately your proposed match did not confirm within the two-week ' +
-          'window - that happens sometimes, and it is no reflection on you.\n\n' +
+          'window - that happens sometimes.\n\n' +
           'You are back in the matching pool as of today, and you can expect to ' +
           'hear from us again within 1-2 weeks.\n\n' +
           'Questions any time - just reply to this email.\n\n' +

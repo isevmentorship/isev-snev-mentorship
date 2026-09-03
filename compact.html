@@ -232,9 +232,13 @@
           document.getElementById("matchFit").textContent = m.fit ? m.fit + "% fit" : "";
           var facts = "";
           if (m.stage) facts += "<dt style='color:var(--muted);'>Career stage</dt><dd style='margin:0;'>" + esc(m.stage) + "</dd>";
-          if (m.experience) facts += "<dt style='color:var(--muted);'>Mentoring experience</dt><dd style='margin:0;'>" + esc(m.experience) + "</dd>";
           if (m.languages) facts += "<dt style='color:var(--muted);'>Languages</dt><dd style='margin:0;'>" + esc(m.languages) + "</dd>";
-          if (m.tz) facts += "<dt style='color:var(--muted);'>Time zone</dt><dd style='margin:0;'>" + esc(m.tz) + "</dd>";
+          if (m.tz) {
+            var deltaTxt = "";
+            if (m.delta === 0) deltaTxt = " <span style='color:var(--muted);'>(same as your time zone)</span>";
+            else if (m.delta != null) deltaTxt = " <span style='color:var(--muted);'>(" + esc(m.delta) + "h from you)</span>";
+            facts += "<dt style='color:var(--muted);'>Time zone</dt><dd style='margin:0;'>" + esc(m.tz) + deltaTxt + "</dd>";
+          }
           document.getElementById("matchFacts").innerHTML = facts;
           var tags = (m.topics || []).map(function (t, i) {
             return '<span class="tag">' + (i + 1) + ". " + esc(t) + "</span>";

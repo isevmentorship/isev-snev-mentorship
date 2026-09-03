@@ -1309,15 +1309,18 @@ function blindedCounterpart_(pairKey, myRole, counterpartEmail) {
     if (a.role === otherRole && a.email === counterpartEmail) other = a;
   });
   if (!other) return null;
-  let fit = null;
+  let fit = null, delta = null;
   matchRows_().rows.forEach(function (r) {
-    if (String(r[mcol_('pair_key')]) === pairKey) fit = Number(r[mcol_('score_total_pct')]) || null;
+    if (String(r[mcol_('pair_key')]) !== pairKey) return;
+    fit = Number(r[mcol_('score_total_pct')]) || null;
+    const d = Number(r[mcol_('offset_delta_hours')]);
+    if (!isNaN(d)) delta = d;
   });
   return {
     role: otherRole,
     fit: fit,
+    delta: delta,
     stage: other.stage || '',
-    experience: otherRole === 'mentor' ? (other.experience || '') : '',
     topics: (other.primary || []).slice()
       .sort(function (a, b) { return a.rank - b.rank; })
       .map(function (t) { return TOPIC_LABELS[t.topic] || t.topic; }),

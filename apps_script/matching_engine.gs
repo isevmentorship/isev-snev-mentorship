@@ -981,6 +981,30 @@ function poolBookkeeping_() {
     if (st === 'accepted' && !stamp) apps.getRange(i + 1, cStamp + 1).setValue(now);
     if (st !== 'accepted' && stamp) apps.getRange(i + 1, cStamp + 1).setValue('');
   }
+
+  // Retroactive duplicate-email flagging: the form handler stamps repeats at
+  // submission time, but rows that predate it (or arrive while the handler
+  // is stale) would slip through. Re-derive REPEAT flags across the whole
+  // sheet every run. Only cells that are empty or already REPEAT-flags are
+  // written, so any manual committee notes in the flags column are kept.
+  const cEmail = headers.indexOf('email'), cFlags = headers.indexOf('flags');
+  if (cEmail === -1 || cFlags === -1) return;
+  const rowsByEmail = {};
+  for (let i = 1; i < values.length; i++) {
+    const em = String(values[i][cEmail] || '').trim().toLowerCase();
+    if (!em) continue;
+    if (!rowsByEmail[em]) rowsByEmail[em] = [];
+    rowsByEmail[em].push(i + 1);
+  }
+  for (let i = 1; i < values.length; i++) {
+    const em = String(values[i][cEmail] || '').trim().toLowerCase();
+    const current = String(values[i][cFlags] || '');
+    if (current && current.indexOf('REPEAT') !== 0) continue; // manual note - keep
+    const rows = em ? rowsByEmail[em] : null;
+    const others = rows ? rows.filter(function (r) { return r !== i + 1; }) : [];
+    const want = others.length ? 'REPEAT: same email as row ' + others.join(', ') : '';
+    if (want !== current) apps.getRange(i + 1, cFlags + 1).setValue(want);
+  }
 }
 
 // Step 6 (after generation): start a round for every pool member who has

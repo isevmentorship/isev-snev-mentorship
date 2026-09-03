@@ -131,6 +131,7 @@ const DEFAULT_SETTINGS = [
   ['seniority_buffer_pct', 20, 'An earlier-applied mentee keeps a contested mentor unless a later mentee beats their fit by more than this many points'],
   ['auto_send_compacts', 'FALSE', 'FALSE = committee reviews each proposed pair and sets admin-approved by hand (review period). TRUE = proposed pairs are auto-approved and compacts go out the same night'],
   ['compact_expiry_days', 14, 'Unsigned compacts expire after this many days: non-signers park as unresponsive, signers return to the pool'],
+  ['meeting_check_after_days', 14, 'Days after the introduction to send the one-click were-you-able-to-meet check'],
   ['reminder_after_days', 7, 'One reminder email after this many days without a response (compacts, surveys)'],
   ['stalled_after_days', 14, 'Digest flags a person as unresponsive after this many days'],
   ['pool_wait_flag_days', 14, 'Digest flags accepted applicants who have waited in the pool this long with no match proposed'],
@@ -333,7 +334,7 @@ function getSettings() {
   }
   ['weight_topic_overlap', 'weight_focus_overlap', 'secondary_topic_weight',
    'locality_window_hours', 'match_threshold_percent',
-   'seniority_buffer_pct', 'compact_expiry_days',
+   'seniority_buffer_pct', 'compact_expiry_days', 'meeting_check_after_days',
    'reminder_after_days', 'stalled_after_days',
    'checkin_after_days', 'closeout_after_days',
    'pool_wait_flag_days'
@@ -864,6 +865,7 @@ function doGet(e) {
     if (p.action === 'sign') return signCompact_(p);
     if (p.action === 'survey') return serveSurvey_(p);
     if (p.action === 'survey_submit') return submitSurvey_(p);
+    if (p.action === 'meetcheck') return recordMeetCheck_(p);
     return jsonReply_({ ok: true, service: MENTORSHIP_PROGRAM });
   } catch (err) {
     return jsonReply_({ ok: false, error: String(err) });
@@ -1055,6 +1057,8 @@ function progressLifecycle_() {
       what: 'the Mentorship Program Compact (your match is waiting on your signature)' },
     { name: 'survey', sheet: SURVEYS_SHEET, headers: SURVEY_HEADERS,
       sentCol: 6, doneCol: 8, remCol: 9, emailCol: 4, nameCol: 5,
+      // meetcheck is one email, one click, no reminder
+      skip: function (r) { return String(r[2]) === 'meetcheck'; },
       link: function (t) { return MENTORSHIP_SITE_URL + 'survey.html?t=' + t; },
       what: 'your mentorship survey' }
   ];
@@ -1093,6 +1097,30 @@ function progressLifecycle_() {
     const started = days(String(r[mcol_('match_start')]));
     if (started === null) return;
     const pk = String(r[mcol_('pair_key')]);
+    // One-click two-week meeting check (recorded via doGet, not survey.html)
+    if (started >= settings.meeting_check_after_days) {
+      [['mentee', 'mentee_email', 'mentee_name'], ['mentor', 'mentor_email', 'mentor_name']].forEach(function (side) {
+        const email = String(r[mcol_(side[1])]).toLowerCase();
+        if (surveyKey[pk + '|meetcheck|' + email]) return;
+        const token = appendTokenRow_(SURVEYS_SHEET,
+          [null, pk, 'meetcheck', side[0], email, String(r[mcol_(side[2])]),
+           new Date().toISOString(), '', '', 0, '']);
+        const base = ScriptApp.getService().getUrl() +
+          '?action=meetcheck&t=' + token + '&a=';
+        sendMail_(email,
+          MENTORSHIP_PROGRAM + ' - quick check: have you met yet?',
+          'Hi ' + String(r[mcol_(side[2])]) + ',\n\n' +
+          'It has been two weeks since we introduced you and your match. ' +
+          'One-click question - were you able to have your first meeting ' +
+          '(or get one on the calendar)?\n\n' +
+          'Yes, we met or have one scheduled:\n' + base + 'yes\n\n' +
+          'Not yet:\n' + base + 'no\n\n' +
+          'That is all - thanks!\n\n- The ISEV-SNEV Mentorship Committee');
+        surveyKey[pk + '|meetcheck|' + email] = true;
+        report.surveysSent.push('meetcheck: ' + email);
+      });
+    }
+
     [['6mo', settings.checkin_after_days], ['12mo', settings.closeout_after_days]].forEach(function (wave) {
       if (started < wave[1]) return;
       [['mentee', 'mentee_email', 'mentee_name'], ['mentor', 'mentor_email', 'mentor_name']].forEach(function (side) {
@@ -1489,6 +1517,57 @@ function signCompact_(p) {
      '\n\nWaiting on the counterpart\'s signature.') +
     '\n\nSheet: ' + SpreadsheetApp.getActiveSpreadsheet().getUrl());
   return jsonReply_({ ok: true, activated: activated });
+}
+
+// One-click response to the two-week meeting check. Records the answer,
+// stamps the pair row, and alerts the committee on a "not yet".
+function recordMeetCheck_(p) {
+  const page = function (title, body) {
+    return HtmlService.createHtmlOutput(
+      '<!doctype html><html><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      '<title>' + title + '</title></head>' +
+      '<body style="font-family:Georgia,serif;background:#f7f9fb;margin:0;padding:3rem 1rem;">' +
+      '<div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #dde5ec;' +
+      'border-radius:10px;padding:2rem;">' +
+      '<h1 style="color:#0f2a44;margin-top:0;font-size:1.4rem;">' + title + '</h1>' +
+      '<p style="color:#15202b;line-height:1.6;">' + body + '</p>' +
+      '<p><a href="' + MENTORSHIP_SITE_URL + '" style="color:#0f2a44;">Program home</a></p>' +
+      '</div></body></html>');
+  };
+  const hit = findTokenRow_(SURVEYS_SHEET, SURVEY_HEADERS, p.t);
+  if (!hit || String(hit.values[2]) !== 'meetcheck') {
+    return page('This link isn\'t valid.',
+      'It may have been copied incompletely from the email. If in doubt, just reply to the committee email.');
+  }
+  const answer = String(p.a) === 'yes' ? 'yes' : 'no';
+  const already = String(hit.values[8]);
+  if (!already) {
+    hit.sheet.getRange(hit.index, 9).setValue(new Date().toISOString());
+    hit.sheet.getRange(hit.index, 11).setValue(JSON.stringify({ met: answer }));
+    // Stamp the pair row so the answer is visible in Proposed Matches
+    const pk = String(hit.values[1]);
+    const m = matchRows_();
+    m.rows.forEach(function (r, i) {
+      if (String(r[mcol_('pair_key')]) !== pk) return;
+      const cur = String(r[mcol_('committee_notes')] || '');
+      const stamp = '2wk-check ' + hit.values[3] + ': ' + answer;
+      m.sheet.getRange(i + 2, mcol_('committee_notes') + 1)
+        .setValue(cur ? cur + ' | ' + stamp : stamp);
+    });
+    if (answer === 'no') {
+      sendMail_(DIGEST_EMAIL,
+        'ACTION: pair has not met after 2 weeks - ' + pk,
+        String(hit.values[5]) + ' (' + String(hit.values[3]) + ', pair ' + pk + ') ' +
+        'reported they have NOT had their first meeting yet.\n\n' +
+        'Consider checking in with the pair in a week or two to help get the ' +
+        'first meeting scheduled.\n\n' +
+        'Sheet: ' + SpreadsheetApp.getActiveSpreadsheet().getUrl());
+    }
+  }
+  return answer === 'yes'
+    ? page('Great - thanks!', 'Glad the mentorship is underway. Enjoy the year, and remember we check in again around the 6-month mark.')
+    : page('Thanks - noted.', 'No problem - scheduling across time zones takes a moment. The committee may check in soon to help get the first meeting on the calendar. If something specific is blocking it, just reply to the committee email.');
 }
 
 function serveSurvey_(p) {

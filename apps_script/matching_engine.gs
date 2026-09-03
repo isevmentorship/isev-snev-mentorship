@@ -1125,18 +1125,51 @@ function progressLifecycle_() {
 // same night the pair is made.
 function sendCompactsForApproved_() {
   const m = matchRows_();
+  const settings = getSettings();
+  const now = Date.now();
+  // Existing compact rows, keyed by pair+person: the idempotency ledger.
+  const compacts = tokenSheetRows_(COMPACTS_SHEET, COMPACT_HEADERS);
+  const existingByKey = {};
+  compacts.rows.forEach(function (r) {
+    existingByKey[String(r[1]) + '|' + String(r[3]).toLowerCase()] = r;
+  });
   const sentFor = [];
   m.rows.forEach(function (r, i) {
     if (String(r[mcol_('status')]).trim().toLowerCase() !== 'admin-approved') return;
     const pk = String(r[mcol_('pair_key')]);
+
+    // Advance the row FIRST: even if an email fails or the status write is
+    // later lost, the send guard below still prevents duplicate emails.
+    m.sheet.getRange(i + 2, mcol_('status') + 1).setValue('compact-sent');
+
     [['mentee', 'mentee_email', 'mentee_name', 'mentor_email'],
      ['mentor', 'mentor_email', 'mentor_name', 'mentee_email']].forEach(function (side) {
-      const token = upsertCompact_(pk, side[0], String(r[mcol_(side[1])]).toLowerCase(),
-        String(r[mcol_(side[2])]), String(r[mcol_(side[3])]).toLowerCase());
-      sendCompactEmail_(String(r[mcol_(side[1])]), String(r[mcol_(side[2])]), token);
-      sendToolkitEmail_(String(r[mcol_(side[1])]), String(r[mcol_(side[2])]), side[0]);
+      const email = String(r[mcol_(side[1])]).toLowerCase();
+      const name = String(r[mcol_(side[2])]);
+
+      // Send-once guard: skip anyone who already has a compact for this
+      // pair, unless it sat unsigned past the expiry window (a genuine
+      // re-approval after the pair previously dissolved).
+      const existing = existingByKey[pk + '|' + email];
+      if (existing) {
+        const sentAge = (now - new Date(String(existing[6])).getTime()) / 86400000;
+        const signed = !!String(existing[8]);
+        if (signed || isNaN(sentAge) || sentAge < settings.compact_expiry_days) return;
+      }
+
+      try {
+        const token = upsertCompact_(pk, side[0], email, name,
+          String(r[mcol_(side[3])]).toLowerCase());
+        sendCompactEmail_(String(r[mcol_(side[1])]), name, token);
+        sendToolkitEmail_(String(r[mcol_(side[1])]), name, side[0]);
+      } catch (err) {
+        sendMail_(DIGEST_EMAIL,
+          MENTORSHIP_PROGRAM + ' - compact send FAILED for ' + email,
+          'Sending the compact/toolkit emails for pair ' + pk + ' to ' + email +
+          ' failed:\n\n' + String(err) +
+          '\n\nFix the cause, set the pair back to admin-approved, and rerun the pipeline.');
+      }
     });
-    m.sheet.getRange(i + 2, mcol_('status') + 1).setValue('compact-sent');
     sentFor.push(pk);
   });
   return sentFor;
